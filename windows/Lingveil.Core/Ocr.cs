@@ -14,6 +14,10 @@ public static class Ocr
 
     static List<OcrEngine>? engines;
 
+    /// When nothing was read, a hint naming a language the user reads whose OCR pack is
+    /// missing. Filled in once Settings has the "Languages I read on screen" list.
+    public static string? MissingHint() => null;
+
     public static IReadOnlyList<string> Languages => OcrEngine.AvailableRecognizerLanguages.Select(l => l.LanguageTag).ToList();
 
     static List<OcrEngine> Engines()

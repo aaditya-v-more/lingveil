@@ -155,6 +155,9 @@ public sealed class LlamaServer
             UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = false, RedirectStandardError = false,
         };
+        // Implicit Vulkan layers from other software (AMD switchable graphics, capture hooks)
+        // can hang device setup on hybrid laptops; the server needs none of them.
+        psi.Environment["VK_LOADER_LAYERS_DISABLE"] = "~implicit~";
         foreach (var a in Core.Shared.Models["server"]!["args"]!.AsArray()) psi.ArgumentList.Add(a!.GetValue<string>());
         foreach (var a in new[] { "-m", file, "--host", "127.0.0.1", "--port", port.ToString(), "-t", Math.Max(2, Environment.ProcessorCount / 2).ToString() })
             psi.ArgumentList.Add(a);

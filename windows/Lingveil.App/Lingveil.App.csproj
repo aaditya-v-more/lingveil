@@ -13,11 +13,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <StartupObject>Lingveil.App.Program</StartupObject>
     <Version>0.1.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,5 +32,16 @@
     <None Include="..\..\shared\models.json" Link="shared\models.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\shared\languages.json" Link="shared\languages.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- llama.cpp server for local models, pinned in ..\llama.json and fetched once. -->
+  <Target Name="FetchLlama" BeforeTargets="BeforeBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\fetch-llama.ps1&quot;" />
+  </Target>
+  <Target Name="CopyLlama" AfterTargets="Build">
+    <ItemGroup>
+      <LlamaFile Include="llama\*.dll;llama\llama-server.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LlamaFile)" DestinationFolder="$(OutDir)llama" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

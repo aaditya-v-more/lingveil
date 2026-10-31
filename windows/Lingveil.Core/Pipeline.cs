@@ -23,9 +23,20 @@ public static class Pipeline
 
         static double Overlap(Rect a, Rect b) { var i = Rect.Intersect(a, b); return i.IsEmpty ? 0 : i.Width * i.Height; }
         var axValid = new List<TextItem>();
-        foreach (var a in ax)
+        foreach (var a0 in ax)
         {
-            if (!seen.Any(o => Overlap(o.Rect, a.Rect) > 0)) continue;
+            var a = a0;
+            var under = seen.Where(o => Overlap(o.Rect, a.Rect) > o.Rect.Width * o.Rect.Height * 0.5).ToList();
+            if (under.Count == 0) continue;
+            // UI Automation gives element frames (a whole button), not glyph bounds, and no
+            // font: take the box and size from the OCR text inside it, keep the exact string.
+            if (a.FontSize == null)
+            {
+                a.Rect = under.Select(o => o.Rect).Aggregate(Rect.Union);
+                a.Lines = under.Sum(o => o.Lines);
+                a.FontSize = under[0].FontSize;
+                a.Align = under.Count == 1 ? under[0].Align : a.Align;
+            }
             if (!axValid.Any(v => v.Text == a.Text && Overlap(v.Rect, a.Rect) > a.Rect.Width * a.Rect.Height * 0.5)) axValid.Add(a);
         }
         var extra = seen.Where(o => !axValid.Any(a => Overlap(a.Rect, o.Rect) > o.Rect.Width * o.Rect.Height * 0.25));

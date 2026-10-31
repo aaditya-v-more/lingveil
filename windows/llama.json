@@ -1,0 +1,6 @@
+{
+  "about": "Pinned llama.cpp server bundled with the Windows app (Vulkan build: any GPU, CPU fallback). Must be at or after b11429 so the hunyuan-dense, qwen35 and gemma4 architectures load. fetch-llama.ps1 downloads it and checks the hash.",
+  "tag": "b12015",
+  "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12015/llama-b12015-bin-win-vulkan-x64.zip",
+  "sha256": "20129400daa3d8216a1985abf942d993ba732419053540cca1ad6487bfd8ebe6"
+}

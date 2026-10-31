@@ -19,6 +19,14 @@ public static class Program
             Console();
             return Headless.Bench(args[1], args[2]).GetAwaiter().GetResult();
         }
+        if (args.Length >= 2 && args[0] == "--download")
+        {
+            Console();
+            var m = LocalModel.Named(args[1]) ?? throw new ArgumentException("unknown model " + args[1]);
+            ModelStore.Download(m, new Progress<double>(p => System.Console.WriteLine($"{p:P0}")), CancellationToken.None).GetAwaiter().GetResult();
+            System.Console.WriteLine("installed " + ModelStore.PathOf(m));
+            return 0;
+        }
         if (args.Length >= 1 && args[0] == "--ocr-languages")
         {
             Console();
