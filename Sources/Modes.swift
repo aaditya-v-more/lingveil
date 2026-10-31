@@ -121,7 +121,8 @@ final class OneShot {
         if esc { escKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: 0)) { [weak self] in self?.dismiss() } }
         appObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] n in
             let a = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            if a?.processIdentifier != getpid() { MainActor.assumeIsolated { self?.dismiss() } }
+            // (Tests running alongside someone using the Mac keep it up with LINGVEIL_DEBUG_KEEP.)
+            if a?.processIdentifier != getpid(), ProcessInfo.processInfo.environment["LINGVEIL_DEBUG_KEEP"] == nil { MainActor.assumeIsolated { self?.dismiss() } }
         }
         // Hold ⌥ to peek at the original.
         peek = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in

@@ -44,14 +44,110 @@ final class OverlayWindow: NSPanel {
 }
 
 final class OverlayView: NSView {
-    var blocks: [Block] = [] { didSet { prepare(); hovered = nil; shifts = []; gone = []; needsDisplay = true } }
+    var blocks: [Block] = [] { didSet { prepare(); hovered = nil; shifts = []; gone = []; rebuildLayers(); redraw() } }
     /// While following the app (see Follower): how far each block's text has moved since it
     /// was laid out (points, up is positive), and blocks whose text isn't there any more.
     private var shifts: [CGFloat] = []
     private var gone = Set<Int>()
     func move(_ s: [CGFloat], hidden: Set<Int>) {
         guard s.count == blocks.count, s != shifts || hidden != gone else { return }
-        shifts = s; gone = hidden; needsDisplay = true
+        let wasGone = gone
+        shifts = s; gone = hidden
+        // Moving is just repositioning finished layers: no text is laid out or drawn again.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, l) in layers { l.frame.origin.y = layerBase[i]! + shift(i) }
+        CATransaction.commit()
+        if hidden != wasGone {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.12)
+            for (i, l) in layers where hidden.contains(i) != wasGone.contains(i) { fade(l, to: hidden.contains(i) ? 0 : 1) }
+            CATransaction.commit()
+        }
+        if highlight != nil { decor.needsDisplay = true }
+    }
+
+    // Each block is its own GPU layer, painted once; scrolling only moves layers.
+    private let host = Decor.Passive()
+    private lazy var decor = Decor(owner: self)
+    private var layers: [Int: CALayer] = [:]
+    private var layerBase: [Int: CGFloat] = [:]
+    private var layerKeys: [Int: String] = [:]
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        host.layer = CALayer()
+        host.wantsLayer = true
+        host.frame = bounds; host.autoresizingMask = [.width, .height]
+        addSubview(host)
+        decor.frame = bounds; decor.autoresizingMask = [.width, .height]
+        addSubview(decor)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func redraw() { needsDisplay = true; decor.needsDisplay = true }
+
+    private func fade(_ l: CALayer, to v: Float) {
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = l.presentation()?.opacity ?? l.opacity
+        a.toValue = v
+        a.duration = 0.12
+        l.opacity = v
+        l.add(a, forKey: "fade")
+    }
+
+    /// Layers for the current blocks. A block that is already showing at the same place
+    /// with the same text keeps its layer, so re-reading the screen doesn't flicker; new
+    /// ones fade in and stale ones fade out.
+    private func rebuildLayers() {
+        guard window != nil else { return }   // offscreen (tests): drawn in draw(_:)
+        let scale = window?.backingScaleFactor ?? 2
+        func key(_ text: String, _ r: CGRect) -> String { "\(text)|\(Int((r.minX / 3).rounded())),\(Int((r.minY / 3).rounded())),\(Int((r.width / 3).rounded()))" }
+        var old: [String: CALayer] = [:]
+        for (i, l) in layers { if let k = layerKeys[i] { old[k] = l } }
+        var next: [Int: CALayer] = [:], base: [Int: CGFloat] = [:], keys: [Int: String] = [:]
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for i in laid.indices where !dropped.contains(i) {
+            let f = paintFrame(i)
+            let k = key(blocks[i].translation, f)
+            let l: CALayer
+            if let reused = old.removeValue(forKey: k) {
+                l = reused
+                l.frame = f
+                if l.opacity < 1 { fade(l, to: 1) }
+            } else {
+                l = CALayer()
+                l.actions = ["position": NSNull(), "bounds": NSNull(), "frame": NSNull(), "contents": NSNull()]
+                l.frame = f
+                l.contentsScale = scale
+                l.contents = image(i, in: f).layerContents(forContentsScale: scale)
+                host.layer?.addSublayer(l)
+                l.opacity = 0
+                fade(l, to: 1)
+            }
+            next[i] = l; base[i] = f.minY; keys[i] = k
+        }
+        for l in old.values {
+            fade(l, to: 0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { l.removeFromSuperlayer() }
+        }
+        CATransaction.commit()
+        layers = next; layerBase = base; layerKeys = keys
+    }
+
+    /// The area a block paints, with room for the card shadow.
+    private func paintFrame(_ i: Int) -> CGRect {
+        laid[i].fill.insetBy(dx: Prefs.style == .card ? -6 : 0, dy: Prefs.style == .card ? -6 : 0)
+    }
+
+    private func image(_ i: Int, in f: CGRect) -> NSImage {
+        NSImage(size: f.size, flipped: false) { [self] _ in
+            let ctx = NSGraphicsContext.current!.cgContext
+            ctx.translateBy(x: -f.minX, y: -f.minY)
+            paint(i, dy: 0)
+            return true
+        }
     }
     private func shift(_ i: Int) -> CGFloat { i < shifts.count ? shifts[i] : 0 }
     /// Each block's original text box, so a translation that needs more room only grows
@@ -64,12 +160,12 @@ final class OverlayView: NSView {
     private var dropped = Set<Int>()   // blocks dropped because they overlap a better one
     var status: String? { didSet { updateStatus() } }
     /// Block being read aloud, outlined.
-    var highlight: Int? { didSet { if highlight != oldValue { needsDisplay = true } } }
+    var highlight: Int? { didSet { if highlight != oldValue { redraw() } } }
     var onClick: (() -> Void)?
     var onScroll: (() -> Void)?
-    var showBorder = false { didSet { needsDisplay = true } }
+    var showBorder = false { didSet { redraw() } }
 
-    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
+    private var hovered: Int? { didSet { if hovered != oldValue { redraw() } } }
     private var hoverTimer: Timer?
     private var showOriginal = false
 
@@ -111,7 +207,7 @@ final class OverlayView: NSView {
         if i != hovered { showOriginal = false; hovered = i }
         guard i != nil else { return }
         hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
-            self?.showOriginal = true; self?.needsDisplay = true
+            self?.showOriginal = true; self?.redraw()
         }
     }
 
@@ -269,13 +365,19 @@ final class OverlayView: NSView {
     // MARK: drawing
 
     override func draw(_ dirty: NSRect) {
+        // In a window the blocks are layers; offscreen (tests) they are drawn here.
+        guard window == nil else { return }
+        for i in laid.indices where !dropped.contains(i) && !gone.contains(i) { paint(i, dy: shift(i)) }
+        drawDecor()
+    }
+
+    /// Paints block `i`'s background and translation, moved up by `dy`.
+    private func paint(_ i: Int, dy: CGFloat) {
         let ctx = NSGraphicsContext.current!.cgContext
         let card = Prefs.style == .card
-        for i in laid.indices where !dropped.contains(i) && !gone.contains(i) {
+        do {
             var l = laid[i]
-            let dy = shift(i)
             if dy != 0 { l.fill.origin.y += dy; l.textRect.origin.y += dy }
-            guard l.fill.intersects(dirty) else { continue }
             let p = blocks[i].palette
             let radius: CGFloat = card ? 5 : 2
             let path = NSBezierPath(roundedRect: l.fill, xRadius: radius, yRadius: radius)
@@ -290,6 +392,10 @@ final class OverlayView: NSView {
             if card { p.text.withAlphaComponent(0.18).setStroke(); path.lineWidth = 0.5; path.stroke() }
             l.text.draw(with: l.textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
         }
+    }
+
+    /// The read-aloud outline, live-mode border and original-text tooltip, above the blocks.
+    fileprivate func drawDecor() {
         if let h = highlight, h < laid.count, !dropped.contains(h), !gone.contains(h) {
             let p = NSBezierPath(roundedRect: laid[h].fill.offsetBy(dx: 0, dy: shift(h)).insetBy(dx: -3, dy: -2), xRadius: 4, yRadius: 4)
             NSColor.controlAccentColor.withAlphaComponent(0.85).setStroke(); p.lineWidth = 2; p.stroke()
@@ -318,6 +424,8 @@ final class OverlayView: NSView {
         NSColor.separatorColor.setStroke(); path.lineWidth = 0.5; path.stroke()
         s.draw(with: box.insetBy(dx: 6, dy: 4), options: [.usesLineFragmentOrigin])
     }
+
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); rebuildLayers() }
 
     // MARK: status
 
@@ -358,4 +466,14 @@ final class OverlayView: NSView {
         addSubview(fx)
         hud = fx
     }
+}
+
+/// Draws the overlay's outline, border and tooltip above the block layers.
+private final class Decor: NSView {
+    final class Passive: NSView { override func hitTest(_ p: NSPoint) -> NSView? { nil } }
+    unowned let owner: OverlayView
+    init(owner: OverlayView) { self.owner = owner; super.init(frame: .zero) }
+    required init?(coder: NSCoder) { fatalError() }
+    override func hitTest(_ p: NSPoint) -> NSView? { nil }
+    override func draw(_ dirty: NSRect) { owner.drawDecor() }
 }

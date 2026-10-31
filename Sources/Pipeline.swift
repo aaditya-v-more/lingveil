@@ -7,11 +7,13 @@ enum Pipeline {
     /// actually visible and fills in anything Accessibility can't see (images, games, video).
     nonisolated(unsafe) static var timings = ""
 
-    static func items(in snap: Snapshot, app: NSRunningApplication?, fastOCR: Bool = false) async -> [TextItem] {
+    /// `accessibility: false` uses OCR only, for a frame that may no longer match what the
+    /// app reports right now (the screen was moving when it was captured).
+    static func items(in snap: Snapshot, app: NSRunningApplication?, fastOCR: Bool = false, accessibility: Bool = true) async -> [TextItem] {
         let t0 = Date()
         async let ocr = OCR.items(in: snap, fast: fastOCR)
         var ax: [TextItem] = []
-        if Prefs.useAccessibility, let app, app.processIdentifier != getpid() {
+        if accessibility, Prefs.useAccessibility, let app, app.processIdentifier != getpid() {
             ax = await Task.detached(priority: .userInitiated) { AXText.items(app: app, within: snap.frame) }.value
         }
         let axTime = Date().timeIntervalSince(t0)

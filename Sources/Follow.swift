@@ -13,16 +13,20 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     private let screen: NSScreen
     private let area: CGRect
     private var stream: SCStream?
-    private let queue = DispatchQueue(label: "lingveil.follow", qos: .userInitiated)
-    nonisolated let tracker = MotionTracker()
+    private let queue = DispatchQueue(label: "lingveil.follow", qos: .userInteractive)
+    nonisolated let tracker: MotionTracker
     private var lastChange = Date.distantPast
     private var lastRefresh = Date()
-    private var working = false
+    private var dirty = false
+    private var loop: Task<Void, Never>?
     private(set) var running = false
+    private var settle: Timer?
+    private var exact: [CGFloat] = [], previous: [CGFloat] = [], hidden = Set<Int>()
     var onBusy: ((Bool) -> Void)?
 
     init(window: OverlayWindow, screen: NSScreen, area: CGRect) {
         self.window = window; self.screen = screen; self.area = area
+        tracker = MotionTracker(scale: max(1, Int(screen.backingScaleFactor.rounded())))
     }
 
     /// Starts watching and returns once the first frame is in.
@@ -31,9 +35,11 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             let (filter, _) = try await Capture.filter(for: screen)
             let cfg = SCStreamConfiguration()
             cfg.sourceRect = Capture.localRect(area, on: screen)
-            cfg.width = Int(area.width); cfg.height = Int(area.height)
-            cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-            cfg.queueDepth = 3
+            // Full resolution: the same frames are read (OCR) when text needs translating, so
+            // what is translated always lines up with what is being tracked.
+            cfg.width = Int(area.width) * tracker.scale; cfg.height = Int(area.height) * tracker.scale
+            cfg.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+            cfg.queueDepth = 5
             cfg.showsCursor = false
             cfg.pixelFormat = kCVPixelFormatType_32BGRA
             let s = SCStream(filter: filter, configuration: cfg, delegate: self)
@@ -42,26 +48,31 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             stream = s
             running = true
             for _ in 0..<40 where !tracker.hasFrame { try? await Task.sleep(for: .milliseconds(25)) }
+            loop = Task { await refreshLoop() }
         } catch { Debug.log("follow could not start: \(error.localizedDescription)") }
     }
 
     func stop() {
         running = false
+        loop?.cancel(); loop = nil
+        settle?.invalidate(); settle = nil
         let s = stream; stream = nil
         Task { try? await s?.stopCapture() }
         tracker.reset()
     }
 
-    /// Shows `blocks` (read from a capture taken when `token` was) if the screen hasn't
-    /// changed since; otherwise the caller shows them anyway and they are read again.
+    /// Shows `blocks`, read from the frame `token` was taken at. If the screen has moved
+    /// since, they are moved to where their text is now before they appear.
     @discardableResult
     func adopt(_ blocks: [Block], _ token: MotionTracker.Token) -> Bool {
         guard running, let w = window else { return false }
         let rects = blocks.map { b in
             CGRect(x: b.item.rect.minX - area.minX, y: area.maxY - b.item.rect.maxY, width: b.item.rect.width, height: b.item.rect.height)
         }
-        guard tracker.setReference(token, rects) else { return false }
+        guard let catchUp = tracker.setReference(token, rects) else { return false }
         w.view.blocks = blocks
+        exact = []; previous = []
+        if let m = catchUp { apply(m, predict: false) } else { dirty = false }
         return true
     }
 
@@ -70,10 +81,7 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
               let info = (CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
               let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
               let pb = sb.imageBuffer else { return }
-        CVPixelBufferLockBaseAddress(pb, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(pb) else { return }
-        guard let motion = tracker.frame(base, CVPixelBufferGetWidth(pb), CVPixelBufferGetHeight(pb), CVPixelBufferGetBytesPerRow(pb)) else { return }
+        guard let motion = tracker.frame(pb) else { return }
         Task { @MainActor in self.changed(motion) }
     }
 
@@ -84,56 +92,82 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     private func changed(_ m: MotionTracker.Motion) {
         guard running else { return }
         lastChange = Date()
-        if let sh = m.shifts { Debug.log("follow change \(Dictionary(grouping: sh, by: { $0 }).mapValues(\.count)) hidden=\(m.hidden.count)") }
-        if let shifts = m.shifts, m.reference == tracker.referenceID {
-            // Image rows grow downward; the view's y grows upward.
-            window?.view.move(shifts.map { -CGFloat($0) }, hidden: m.hidden)
-        }
-        refreshWhenStill()
+        dirty = true
+        if m.shifts != nil, m.reference == tracker.referenceID { apply(m, predict: true) }
     }
 
-    /// Reads and translates again once nothing has moved for a moment.
-    func refreshWhenStill() {
-        guard !working, running else { return }
-        working = true
-        Task {
-            defer { working = false }
-            while running {
-                while running, Date().timeIntervalSince(lastChange) < 0.3 || Date().timeIntervalSince(lastRefresh) < 0.8 {
-                    try? await Task.sleep(for: .milliseconds(60))
+    /// Moves the blocks to the measured positions. While scrolling, the frame that was
+    /// measured is already a little old by the time the overlay is shown, so blocks are
+    /// put a little further along their way (the last frame's move); when frames stop
+    /// coming, they settle on the measured spot.
+    private func apply(_ m: MotionTracker.Motion, predict: Bool) {
+        guard let s = m.shifts, let view = window?.view else { return }
+        // Image rows grow downward; the view's y grows upward.
+        let now = s.map { -CGFloat($0) }
+        var shown = now
+        if predict, previous.count == now.count {
+            for i in now.indices where !m.hidden.contains(i) {
+                let step = now[i] - previous[i]
+                if abs(step) > 0.5, abs(step) < 120 { shown[i] += step * 0.75 }
+            }
+        }
+        previous = now; exact = now; hidden = m.hidden
+        view.move(shown, hidden: m.hidden)
+        settle?.invalidate()
+        if shown != now {
+            settle = Timer.scheduledTimer(withTimeInterval: 0.045, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.running, self.exact.count == now.count else { return }
+                    self.previous = self.exact
+                    self.window?.view.move(self.exact, hidden: self.hidden)
                 }
-                guard running else { return }
-                lastRefresh = Date()
-                Debug.log("follow refresh start")
-                let token = tracker.begin()
-                onBusy?(true)
-                let t0 = Date()
-                let blocks = try? await translate()
-                onBusy?(false)
-                guard running else { return }
-                Debug.log(String(format: "follow refresh %d blocks in %.0f ms", blocks?.count ?? -1, Date().timeIntervalSince(t0) * 1000))
-                if let blocks, adopt(blocks, token) { return }
             }
         }
     }
 
-    private func translate() async throws -> [Block] {
-        let app = Pipeline.frontApp
-        let snap = try await Capture.snapshot(screen, rect: area)
-        let items = await Pipeline.items(in: snap, app: app)
-        return try await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target), focus: Pipeline.frontWindowFrame(of: app))
+    /// Reads and translates whatever changed: soon after the screen goes still, and every
+    /// half second while it keeps moving (so text scrolled into view doesn't wait for the
+    /// scrolling to stop).
+    private func refreshLoop() async {
+        while running, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(30))
+            let still = Date().timeIntervalSince(lastChange) > 0.12
+            guard dirty, still || Date().timeIntervalSince(lastRefresh) > 0.5 else { continue }
+            dirty = false
+            lastRefresh = Date()
+            guard let token = tracker.begin(), let pixels = token.pixels else { continue }
+            onBusy?(true)
+            let t0 = Date()
+            let snap = Snapshot(pixels: pixels, frame: area, scale: CGFloat(tracker.scale))
+            let app = Pipeline.frontApp
+            // Accessibility reports where text is now, which only matches the frame if the
+            // screen is still.
+            let items = await Pipeline.items(in: snap, app: app, accessibility: still)
+            let blocks = try? await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target), focus: Pipeline.frontWindowFrame(of: app))
+            onBusy?(false)
+            guard running, let blocks else { continue }
+            Debug.log(String(format: "follow refresh %d blocks in %.0f ms (%@)", blocks.count, Date().timeIntervalSince(t0) * 1000, still ? "still" : "moving"))
+            if !adopt(blocks, token) { dirty = true }
+        }
     }
+
+    /// Kept for the first translation, which comes from its own capture.
+    func refreshWhenStill() { dirty = true }
 }
 
 /// Works out, from frame to frame, where each translated block's text has gone. Runs on
 /// the capture queue; frames are kept as one byte of brightness per point.
 final class MotionTracker: @unchecked Sendable {
-    struct Token { fileprivate let changes: Int; fileprivate let luma: [UInt8]; fileprivate let w: Int; fileprivate let h: Int }
+    struct Token { fileprivate let changes: Int; fileprivate let luma: [UInt8]; fileprivate let w: Int; fileprivate let h: Int; let pixels: PixelBuffer? }
     struct Motion { let reference: Int; let shifts: [Int]?; let hidden: Set<Int> }
 
     private struct Box { let x0, x1, y0, y1: Int; let contrast: Float }
 
+    let scale: Int
+    init(scale: Int) { self.scale = scale }
+
     private let lock = NSLock()
+    private var latest: CVPixelBuffer?
     private var w = 0, h = 0
     private var luma: [UInt8] = []
     private var print: [UInt8] = []
@@ -149,16 +183,32 @@ final class MotionTracker: @unchecked Sendable {
     var hasFrame: Bool { lock.withLock { !luma.isEmpty } }
     var referenceID: Int { lock.withLock { refID } }
 
-    func reset() { lock.withLock { luma = []; print = []; boxes = []; ref = []; refID += 1 } }
+    func reset() { lock.withLock { luma = []; print = []; boxes = []; ref = []; latest = nil; refID += 1 } }
 
-    /// What the screen looks like now, to compare with when a translation comes back.
-    func begin() -> Token { lock.withLock { Token(changes: changes, luma: luma, w: w, h: h) } }
-
-    /// Makes `rects` (top-down points within the area) the blocks to follow. Fails when the
-    /// screen changed after `t` was taken, since the blocks would then be out of date.
-    func setReference(_ t: Token, _ rects: [CGRect]) -> Bool {
+    /// The current frame: its brightness (to follow from) and its pixels (to read text from).
+    func begin() -> Token? {
         lock.withLock {
-            guard t.changes == changes, !t.luma.isEmpty, t.w == w, t.h == h else { return false }
+            guard !luma.isEmpty else { return nil }
+            var px: PixelBuffer?
+            if let pb = latest {
+                CVPixelBufferLockBaseAddress(pb, .readOnly)
+                let pw = CVPixelBufferGetWidth(pb), ph = CVPixelBufferGetHeight(pb), row = CVPixelBufferGetBytesPerRow(pb)
+                if let src = CVPixelBufferGetBaseAddress(pb), let p = PixelBuffer(width: pw, height: ph) {
+                    for y in 0..<ph { memcpy(p.base + y * p.bytesPerRow, src + y * row, pw * 4) }
+                    px = p
+                }
+                CVPixelBufferUnlockBaseAddress(pb, .readOnly)
+            }
+            return Token(changes: changes, luma: luma, w: w, h: h, pixels: px)
+        }
+    }
+
+    /// Makes `rects` (top-down points within the area, as they were in frame `t`) the blocks
+    /// to follow. Returns nil if that can't be done (the area changed size); otherwise, if
+    /// the screen moved since `t`, where the blocks are now.
+    func setReference(_ t: Token, _ rects: [CGRect]) -> Motion?? {
+        lock.withLock {
+            guard !t.luma.isEmpty, t.w == w, t.h == h else { return nil }
             ref = t.luma
             refSmall = Self.shrink(ref, w, h)
             boxes = rects.map { r in
@@ -168,28 +218,39 @@ final class MotionTracker: @unchecked Sendable {
             last = Array(repeating: 0, count: rects.count)
             lastBand = Array(repeating: 0, count: Self.bandCount)
             refID += 1
-            return true
+            return .some(t.changes == changes ? nil : track(luma))
         }
     }
 
     /// nil when the frame looks the same as the previous one.
-    func frame(_ base: UnsafeMutableRawPointer, _ fw: Int, _ fh: Int, _ row: Int) -> Motion? {
-        let fp = Live.fingerprint(base, fw, fh, row)
+    func frame(_ pb: CVPixelBuffer) -> Motion? {
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pb) else { return nil }
+        let pw = CVPixelBufferGetWidth(pb), ph = CVPixelBufferGetHeight(pb), row = CVPixelBufferGetBytesPerRow(pb)
+        let fp = Live.fingerprint(base, pw, ph, row)
         lock.lock(); defer { lock.unlock() }
         guard Live.differs(fp, print) else { return nil }
         print = fp
+        // One brightness sample per point is plenty to follow motion.
+        let fw = pw / scale, fh = ph / scale
         var l = [UInt8](repeating: 0, count: fw * fh)
         let p = base.assumingMemoryBound(to: UInt8.self)
         l.withUnsafeMutableBufferPointer { out in
             for y in 0..<fh {
-                let r = p + y * row, o = y * fw
-                for x in 0..<fw { let q = r + x * 4; out[o + x] = UInt8((Int(q[0]) + 2 * Int(q[1]) + Int(q[2])) >> 2) }
+                let r = p + y * scale * row, o = y * fw
+                for x in 0..<fw { let q = r + x * scale * 4; out[o + x] = UInt8((Int(q[0]) + 2 * Int(q[1]) + Int(q[2])) >> 2) }
             }
         }
         if fw != w || fh != h { w = fw; h = fh; boxes = []; ref = [] }
         luma = l
+        latest = pb
         changes += 1
         guard !boxes.isEmpty else { return Motion(reference: refID, shifts: nil, hidden: []) }
+        return track(l)
+    }
+
+    private func track(_ l: [UInt8]) -> Motion {
 
         // How far each vertical band of the screen scrolled (coarse on a small copy, then
         // to the point), then, per block, which of those moves (or none) its text matches.
