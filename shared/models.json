@@ -214,7 +214,7 @@
       "id": "hy-mt2-7b",
       "name": "Hy-MT2 7B",
       "maker": "Tencent",
-      "summary": "The 7B Hy-MT2. Tencent reports it ahead of much larger open models on translation.",
+      "summary": "The 7B Hy-MT2. In our tests the best into Japanese, but slow on a MacBook Air and weaker into Hindi than Gemma 4 E2B.",
       "repo": "tencent/Hy-MT2-7B-GGUF",
       "file": "Hy-MT2-7B-Q4_K_M.gguf",
       "sha256": "9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b",
@@ -222,13 +222,13 @@
       "ramGB": 16,
       "languages": 36,
       "prompt": "hy-mt",
-      "speed": 2,
-      "accuracy": 5,
+      "speed": 1,
+      "accuracy": 4,
       "recommended": false,
       "badge": null,
       "license": "Apache 2.0",
       "supported": "hy-mt",
-      "tested": false
+      "tested": true
     },
     {
       "id": "index-translate-9b",

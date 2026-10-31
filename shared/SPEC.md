@@ -143,18 +143,32 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
 - Sample at most ~40,000 pixels per item (stride).
 
 ### 2.9 Painting
-- Fill rect = text box grown by max(2, 0.18h) horizontally and max(1, 0.1h) vertically,
-  corner radius 2 (seamless) or 5 with a soft shadow and hairline border (card style).
-  Vertical gradient top→bottom when the background is a gradient.
-- Fit: start at the item's font (or estimated size), shrink in 0.5 pt steps down to 0.76×
-  while the wrapped text is taller than 1.06× the box; a single line may then widen up to
-  1.6× (centered items grow both ways) but only into free space (no other block's original
-  box, not past the screen edge); then shrink to max(7, 0.7×); if still too tall, grow
-  downward only into free space and at most 0.5× the box, then shrink to max(7, 0.55×)
-  and truncate. Center the text vertically.
-- One size per column: single-line blocks anchored on the same edge with the same original
-  size are capped at the group's median fitted size (larger ones come down to it; one long
-  item that had to shrink further keeps its own size).
+- **Measure from the pixels first** (per block, in the capture): background = most common
+  color (4 bits per channel buckets) of a 1–3 px ring around the text; ink = pixels farther
+  than max(0.16, 0.45 × |text − bg|) from the background *and* within max(0.2, 0.55 × |text − bg|)
+  of the text color (icons and controls next to a label don't count). Trim the box to the
+  first/last ink column, then extend it while ink continues (stop after a 0.33-line gap,
+  look at most 2 lines out). Free space: skip a fringe of ≤ 0.25 line of non-background
+  columns, then count background columns (distance < 0.07) up to max(1.5 × width, 8 lines);
+  hitting a non-background column means that side is bounded. Same up/down, at most half a line.
+- Gradient only when two opposite sides of the ring differ (> 0.05), each side is plain
+  (≥ 60% one color) and the other two sides sit between them; else one flat color.
+- **Alignment of single lines**: equal free space on both sides (within 30% when both bounded,
+  8% otherwise) → centered (buttons, tabs, dialog titles); shares its right edge (±2.5 pt)
+  with a block within 4 lines above/below but not its left edge → right; bounded right
+  within 0.6 line with > 3 lines free on the left → right; else as detected.
+- **Weight**: stroke = median length of horizontal ink runs ÷ line height. Relative to the
+  screen's median stroke: ≥ 1.75× bold, ≥ 1.45× semibold, else regular.
+- Fill rect = text area plus padding of max(2, 0.18h) sideways and max(1, 0.1h) vertically,
+  but padding only extends into measured free background (never over a border).
+  Corner radius 2 (seamless) or 5 with a soft shadow and hairline border (card style).
+- **Single line**: widen into measured free space first (up to 2.5×, on the side the
+  alignment allows, never onto another block's original box or off screen), then shrink in
+  0.5 pt steps to max(7, 0.6×), then truncate the tail. Never wrap. Draw one line of the
+  font's own height centered on the original line's midline.
+- **Paragraph**: shrink to max(7, 0.7×) while taller than 1.06× the box; then grow downward
+  only into free space (≤ 0.5× the box), shrink to max(7, 0.55×), truncate. Text starts at
+  the original first line.
 - Fade the overlay in over 120 ms, out over 100 ms. Never animate text that is being read.
 
 ### 2.10 Live mode
