@@ -43,7 +43,10 @@ final class OverlayWindow: NSPanel {
 }
 
 final class OverlayView: NSView {
-    var blocks: [Block] = [] { didSet { layoutCache = [:]; hovered = nil; needsDisplay = true } }
+    var blocks: [Block] = [] { didSet { layoutCache = [:]; baseRects = blocks.map { local($0.item.rect) }; hovered = nil; needsDisplay = true } }
+    /// Each block's original text box, so a translation that needs more room only grows
+    /// into space no other text occupies.
+    private var baseRects: [CGRect] = []
     var status: String? { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     var onScroll: (() -> Void)?
@@ -167,18 +170,31 @@ final class OverlayView: NSView {
         let floor1 = base.pointSize * 0.76
         while size > floor1, height(attr(size), rect.width) > tolerance { size -= 0.5 }
         var s = attr(size)
+        let others = baseRects.enumerated().filter { $0.offset != i }.map(\.element)
         if height(s, rect.width) > tolerance, it.lines == 1 {
-            // Single line that still doesn't fit: let it grow sideways (up to 60%).
+            // Single line that still doesn't fit: let it grow sideways (up to 60%), but only
+            // into free space and never past the edge of the screen.
             let want = s.size().width + 4
-            let grow = min(want, rect.width * 1.6) - rect.width
-            if grow > 0 {
-                rect.size.width += grow
-                if it.align == .center { rect.origin.x -= grow / 2 }
+            var grow = min(want, rect.width * 1.6) - rect.width
+            let band = rect.insetBy(dx: 0, dy: rect.height * 0.25)
+            if it.align == .center {
+                let left = others.filter { $0.maxX <= rect.minX && $0.minY < band.maxY && $0.maxY > band.minY }.map { rect.minX - $0.maxX }.min() ?? .infinity
+                let right = others.filter { $0.minX >= rect.maxX && $0.minY < band.maxY && $0.maxY > band.minY }.map { $0.minX - rect.maxX }.min() ?? .infinity
+                grow = min(grow, 2 * max(0, min(left, right, rect.minX, bounds.width - rect.maxX) - 2))
+                rect.origin.x -= max(0, grow) / 2
+            } else {
+                let right = others.filter { $0.minX >= rect.maxX - 1 && $0.minY < band.maxY && $0.maxY > band.minY }.map { $0.minX - rect.maxX }.min() ?? .infinity
+                grow = min(grow, max(0, min(right, bounds.width - rect.maxX) - 2))
             }
+            if grow > 0 { rect.size.width += grow }
         }
         while height(s, rect.width) > tolerance, size > max(7, base.pointSize * 0.7) { size -= 0.5; s = attr(size) }
-        // Still too long: let it run onto extra lines below rather than cut it off.
-        let need = height(s, rect.width) + 2
+        // Still too long: run onto extra lines below, as far as the next text below allows
+        // (at most half the box again); past that, shrink further and finally truncate.
+        let below = others.filter { $0.maxY <= rect.minY + 1 && $0.minX < rect.maxX && $0.maxX > rect.minX }.map { rect.minY - $0.maxY }.max() ?? rect.minY
+        let room = max(0, min(below - 2, rect.height * 0.5))
+        while height(s, rect.width) + 2 > rect.height + room, size > max(7, base.pointSize * 0.55) { size -= 0.5; s = attr(size) }
+        let need = min(height(s, rect.width) + 2, rect.height + room)
         if need > rect.height { rect.origin.y -= need - rect.height; rect.size.height = need }
         let out = (rect.integral, s, size)
         layoutCache[i] = out

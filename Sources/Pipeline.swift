@@ -22,11 +22,23 @@ enum Pipeline {
         func overlap(_ a: CGRect, _ b: CGRect) -> CGFloat {
             let i = a.intersection(b); return i.isNull ? 0 : i.width * i.height
         }
+        // Accessibility gives the exact text, but in web and Electron apps a whole paragraph
+        // arrives as one element with no font, so its size and line count come from the OCR
+        // lines that sit inside it (which also proves the text is actually visible).
         var axValid: [TextItem] = []
-        for a in ax where seen.contains(where: { overlap($0.rect, a.rect) > 0 }) {
-            if !axValid.contains(where: { $0.text == a.text && overlap($0.rect, a.rect) > a.rect.width * a.rect.height * 0.5 }) {
-                axValid.append(a)
+        for var a in ax {
+            let inside = seen.filter { o in overlap(o.rect, a.rect) >= o.rect.width * o.rect.height * 0.5 }
+            guard !inside.isEmpty else { continue }
+            if axValid.contains(where: { $0.text == a.text && overlap($0.rect, a.rect) > a.rect.width * a.rect.height * 0.5 }) { continue }
+            let ocrSize = inside.compactMap(\.size).sorted().dropFirst(inside.count / 2).first
+            a.lines = max(1, inside.reduce(0) { $0 + $1.lines })
+            if let f = a.font, let o = ocrSize, f.pointSize > o * 1.6 || f.pointSize < o * 0.6 { a.font = nil }
+            if a.font == nil {
+                a.size = ocrSize
+                a.rect = inside.dropFirst().reduce(inside[0].rect) { $0.union($1.rect) }
+                if inside.count == 1 { a.align = inside[0].align }
             }
+            axValid.append(a)
         }
         let extra = seen.filter { o in
             let area = o.rect.width * o.rect.height
