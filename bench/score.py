@@ -28,8 +28,8 @@ for path in sorted(glob.glob(os.path.join(here, "out", "*.txt"))):
     name, tgt = os.path.basename(path)[:-4].rsplit("-", 1)
     if name == "google":
         continue
-    ref = open(os.path.join(here, "out", f"google-{tgt}.txt")).read().split("\n")
-    hyp = open(path).read().split("\n")
+    ref = open(os.path.join(here, "out", f"google-{tgt}.txt"), encoding="utf-8").read().split("\n")
+    hyp = open(path, encoding="utf-8").read().split("\n")
     rows[name][tgt] = sum(chrf(h, r) for h, r in zip(hyp, ref)) / len(ref)
 print(f"{'engine':24} {'→en':>6} {'→hi':>6} {'→ja':>6} {'mean':>6}")
 for name, s in sorted(rows.items(), key=lambda kv: -sum(kv[1].values())):

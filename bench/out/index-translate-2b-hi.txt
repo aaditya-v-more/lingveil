@@ -1,20 +1,20 @@
-Settings
-New chat
-Type a message
-Save changes
-Delete account
-Are you sure you want to delete this file? This can't be undone.
-Your download is complete.
-Turn on notifications
-Sign in with Google
-Forgot your password?
-What time does the meeting start tomorrow?
-I sent you the photos from the trip.
-Unsaved changes will be lost if you close this window.
-Check for updates
-Your payment was processed and your order will ship within three business days.
-Connection failed. Check your network settings and try again.
-Search contacts
-Add a friend
-Last seen 5 minutes ago
-Privacy and security
+सेटिंग्स
+नया चैट
+एक संदेश टाइप करें
+बदलाव सहेजें
+अकाउंट डिलीट करें
+क्या आप पक्के तौर पर यह फ़ाइल डिलीट करना चाहते हैं? इसे पीछे नहीं लिया जा सकता।
+आपका डाउनलोड पूरा हो गया है।
+सूचनाएँ चालू करें
+गूगल के साथ लॉग इन करें
+अपना पासवर्ड भूल गए हैं?
+कल मीटिंग कब शुरू होगी?
+मैंने आपको यात्रा की तस्वीरें भेज दी हैं।
+यदि आप यह विंडो बंद करते हैं, तो असुरक्षित बदलाव खो जाएँगे।
+अपडेट्स के लिए जाँचें
+आपका भुगतान संसाधित हो गया है और आपका ऑर्डर तीन कार्य दिवसों के भीतर भेजा जाएगा।
+कनेक्शन विफल हो गया है। अपने नेटवर्क सेटिंग्स को चेक करें और फिर से कोशिश करें।
+संपर्कों को खोजें
+दोस्त जोड़ें
+5 मिनट पहले देखा गया
+गोपनीयता और सुरक्षा

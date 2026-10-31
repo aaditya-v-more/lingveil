@@ -43,7 +43,7 @@ struct ModelsView: View {
                 } header: {
                     Text("More models")
                 } footer: {
-                    Text("Ratings in this section are estimates from the makers' published results and model size; they haven't been through our tests yet.")
+                    Text("Ratings on models marked Tested come from our tests; the others are estimates from the makers' published results and model size.")
                 }
             }
         }
@@ -72,6 +72,7 @@ struct ModelsView: View {
                 Text(model.name).font(.headline)
                 Text(model.maker).foregroundStyle(.secondary)
                 if let b = model.badge { Tag(text: b, color: .green) }
+                if model.tested && !model.recommended { Tag(text: "Tested", color: .secondary) }
                 if selected && installed { Tag(text: "In use", color: .accentColor) }
                 Spacer()
                 actions(model, installed: installed, selected: selected)

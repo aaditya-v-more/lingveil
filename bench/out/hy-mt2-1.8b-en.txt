@@ -3,11 +3,11 @@ New chat
 Enter a message
 What time does tomorrow’s meeting start?
 I sent the photos.
-Good morning. How about we meet at a café near the station this afternoon? I'd like to talk about a new project.
+Good morning. Shall we meet at a café near the station this afternoon? I have something to talk about regarding a new project.
 The download is complete.
 Is it okay to delete this account? This action cannot be restored.
 Turn on the notification.
-There are unstored changes.
+There are unsaved changes.
 Save changes
 Delete account
 Privacy and security

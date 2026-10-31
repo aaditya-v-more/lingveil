@@ -44,28 +44,42 @@
         "top_p": 0.6,
         "top_k": 20,
         "repeat_penalty": 1.05
-      }
+      },
+      "serverArgs": [
+        "--jinja"
+      ]
     },
     "index-translate": {
       "endpoint": "chat",
       "template": "请将以下文本翻译为{targetChinese}，直接输出翻译结果，不要进行任何解释。\n\n{text}",
       "params": {
         "temperature": 0
-      }
+      },
+      "serverArgs": [
+        "--jinja"
+      ]
     },
     "gemma": {
       "endpoint": "chat",
       "template": "Translate the following text into {target}. Reply with only the translation, nothing else.\n\n{text}",
       "params": {
         "temperature": 0
-      }
+      },
+      "serverArgs": [
+        "--jinja"
+      ]
     },
     "translate-gemma": {
       "endpoint": "completion",
       "template": "<start_of_turn>user\nYou are a professional {source} ({sourceCode}) to {target} ({targetCode}) translator. Your goal is to accurately convey the meaning and nuances of the original {source} text while adhering to {target} grammar, vocabulary, and cultural sensitivities.\nProduce only the {target} translation, without any additional explanations or commentary. Please translate the following {source} text into {target}:\n\n\n{text}<end_of_turn>\n<start_of_turn>model\n",
       "params": {
         "temperature": 0
-      }
+      },
+      "serverArgs": [
+        "--no-jinja",
+        "--chat-template",
+        "gemma"
+      ]
     }
   },
   "server": {
@@ -76,7 +90,6 @@
       "4",
       "-ngl",
       "99",
-      "--jinja",
       "-fa",
       "on",
       "-b",
@@ -114,7 +127,8 @@
       "recommended": true,
       "badge": "Best balance",
       "license": "Apache 2.0",
-      "supported": null
+      "supported": null,
+      "tested": true
     },
     {
       "id": "hy-mt2-1.8b",
@@ -133,7 +147,8 @@
       "recommended": true,
       "badge": "Fastest",
       "license": "Apache 2.0",
-      "supported": "hy-mt"
+      "supported": "hy-mt",
+      "tested": true
     },
     {
       "id": "gemma-4-e2b",
@@ -152,13 +167,14 @@
       "recommended": true,
       "badge": "Most accurate",
       "license": "Apache 2.0",
-      "supported": null
+      "supported": null,
+      "tested": true
     },
     {
       "id": "translategemma-4b",
       "name": "TranslateGemma 4B",
       "maker": "Google",
-      "summary": "Gemma 3 tuned by the Google Translate team. Strong on long text, slower on short labels.",
+      "summary": "Gemma 3 tuned by the Google Translate team. In our tests the slowest of the small models, and less accurate than Gemma 4 E2B.",
       "repo": "mradermacher/translategemma-4b-it-GGUF",
       "file": "translategemma-4b-it.Q4_K_M.gguf",
       "sha256": "81200d03e843d2ec1ece6eeafe7d13cb6e5211e1fcd336ade55790b683a08330",
@@ -166,18 +182,19 @@
       "ramGB": 8,
       "languages": 55,
       "prompt": "translate-gemma",
-      "speed": 3,
+      "speed": 1,
       "accuracy": 3,
       "recommended": false,
       "badge": null,
       "license": "Gemma",
-      "supported": null
+      "supported": null,
+      "tested": true
     },
     {
       "id": "gemma-4-e4b",
       "name": "Gemma 4 E4B",
       "maker": "Google",
-      "summary": "The larger sibling of Gemma 4 E2B: more fluent and better with idioms, at about half the speed.",
+      "summary": "The larger Gemma 4. In our tests about as accurate as Gemma 4 E2B at half the speed, so E2B is the better pick unless you translate long documents.",
       "repo": "ggml-org/gemma-4-E4B-it-GGUF",
       "file": "gemma-4-E4B-it-Q4_0.gguf",
       "sha256": "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2",
@@ -186,11 +203,12 @@
       "languages": 140,
       "prompt": "gemma",
       "speed": 2,
-      "accuracy": 4,
+      "accuracy": 5,
       "recommended": false,
       "badge": null,
       "license": "Apache 2.0",
-      "supported": null
+      "supported": null,
+      "tested": true
     },
     {
       "id": "hy-mt2-7b",
@@ -209,7 +227,8 @@
       "recommended": false,
       "badge": null,
       "license": "Apache 2.0",
-      "supported": "hy-mt"
+      "supported": "hy-mt",
+      "tested": false
     },
     {
       "id": "index-translate-9b",
@@ -228,7 +247,8 @@
       "recommended": false,
       "badge": null,
       "license": "Apache 2.0",
-      "supported": null
+      "supported": null,
+      "tested": false
     },
     {
       "id": "translategemma-12b",
@@ -247,7 +267,8 @@
       "recommended": false,
       "badge": null,
       "license": "Gemma",
-      "supported": null
+      "supported": null,
+      "tested": false
     },
     {
       "id": "hy-mt2-30b-a3b",
@@ -266,7 +287,8 @@
       "recommended": false,
       "badge": null,
       "license": "Apache 2.0",
-      "supported": "hy-mt"
+      "supported": "hy-mt",
+      "tested": false
     }
   ]
 }

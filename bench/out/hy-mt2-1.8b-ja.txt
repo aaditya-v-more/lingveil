@@ -1,20 +1,20 @@
-Settings
-New chat
-Type a message
-Save changes
-Delete account
-Are you sure you want to delete this file? This can't be undone.
-Your download is complete.
-Turn on notifications
-Sign in with Google
-Forgot your password?
-What time does the meeting start tomorrow?
-I sent you the photos from the trip.
-Unsaved changes will be lost if you close this window.
-Check for updates
-Your payment was processed and your order will ship within three business days.
-Connection failed. Check your network settings and try again.
-Search contacts
-Add a friend
-Last seen 5 minutes ago
-Privacy and security
+設定
+新しいチャット
+メッセージを入力する
+変更を保存する
+アカウントを削除する
+このファイルを削除するのは確かですか？これを元に戻すことはできません。
+ダウンロードが完了しました。
+通知を有効にする
+Googleでログインする
+パスワードを忘れましたか？
+明日の会議は何時からですか？
+旅行の写真を送りました。
+このウィンドウを閉じると、未保存の変更内容が失われてしまいます。
+更新情報を確認する
+お支払いが完了しましたので、ご注文は3営業日以内に発送されます。
+接続に失敗しました。ネットワーク設定を確認し、もう一度試してみてください。
+連絡先を検索する
+友達を追加する
+最後に見られたのは5分前
+プライバシーとセキュリティ

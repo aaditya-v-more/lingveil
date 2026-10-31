@@ -1,0 +1,32 @@
+Settings
+New chat
+Enter a message
+What time is the meeting tomorrow?
+I sent the photo.
+Good morning. How about meeting this afternoon at a café near the station? I have something to discuss regarding a new project.
+Download completed.
+May I delete this account? This action cannot be undone.
+Enable notifications
+There are unsaved changes.
+Save changes
+Delete account
+Privacy and security
+Automatic backup
+Your messages are encrypted with end-to-end encryption. No one outside this chat can read them.
+Did you forget your password?
+Sign in with Google
+5 minutes ago
+Download
+Settings
+Search for contacts
+Your payment has been processed successfully, and the order will be shipped within three business days.
+Network connection failed. Please check your network settings and try again.
+Read
+Search
+Add as friend
+Would you like to change your password?
+Do you want to eat together tonight?
+Settings
+Cancel
+Your session has expired. Please log in again.
+File could not be saved

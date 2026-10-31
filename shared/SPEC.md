@@ -112,7 +112,9 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   started uppercase or has no case (CJK, Devanagari…).
 
 ### 2.7 Local models (llama.cpp)
-- Bundled `llama-server`, started on first use with `models.json → server.args` plus
+- Bundled `llama-server`, started on first use with `models.json → server.args` plus the
+  model's prompt family `serverArgs` (chat families need `--jinja`; TranslateGemma's own
+  template breaks llama.cpp's template engine, so it runs with `--no-jinja --chat-template gemma`) plus
   `-m <file> --host 127.0.0.1 --port <free> -t <cores/2>`, at low priority. Wait for
   `GET /health` = 200 (≤ 30 s).
 - **Exactly one server**: concurrent requests share one start; a model that failed to start

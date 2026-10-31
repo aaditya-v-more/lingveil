@@ -19,7 +19,8 @@ struct LocalModel: Identifiable, Hashable, Decodable {
     let prompt: String       // key into Catalog.prompts
     let speed: Int           // 1-5 (0 = not rated yet); see bench/BENCHMARKS.md
     let accuracy: Int
-    let recommended: Bool    // tested and suggested for most Macs
+    let recommended: Bool    // suggested for most Macs
+    let tested: Bool         // ratings measured by bench/, not estimated
     let license: String
     let badge: String?       // what it is best at, shown on recommended models
     let supported: String?   // key into Catalog.languageSets; nil = every language
@@ -201,6 +202,7 @@ actor LlamaServer {
         p.executableURL = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
         p.arguments = ["--child-guard", bin.path, "-m", file.path, "--host", "127.0.0.1", "--port", String(port),
                        "-t", String(max(2, ProcessInfo.processInfo.activeProcessorCount / 2))] + Catalog.shared.server.args
+                       + (Catalog.shared.prompts[m.prompt]?.serverArgs ?? [])
         p.qualityOfService = .utility
         p.standardInput = Pipe()
         p.standardOutput = FileHandle.nullDevice
@@ -342,7 +344,7 @@ struct LocalTranslator: Translator {
 
 /// shared/models.json, bundled in the app's resources.
 struct Catalog: Decodable {
-    struct Prompt: Decodable { let endpoint: String; let template: String; let params: [String: JSONValue] }
+    struct Prompt: Decodable { let endpoint: String; let template: String; let params: [String: JSONValue]; let serverArgs: [String]? }
     struct Server: Decodable {
         let args: [String]; let parallel: Int; let idleStopSeconds: Int; let chatExtra: [String: JSONValue]
     }
