@@ -3,7 +3,8 @@
 Both apps (macOS in `Sources/`, Windows in `windows/`) follow this document so a screen
 translates the same way on either. Data that both read lives next to it:
 
-- `models.json`: local model catalog (display order, ratings, download URL + sha256),
+- `models.json`: local model catalog (display order, ratings computed by `bench/rate.py`
+  from measurements, download URL + sha256),
   prompt templates per model family, llama.cpp server arguments.
 - `languages.json`: target languages (`code` is the id used everywhere; Google uses it directly).
 

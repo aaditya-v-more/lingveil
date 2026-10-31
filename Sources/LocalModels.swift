@@ -352,6 +352,7 @@ struct Catalog: Decodable {
     let prompts: [String: Prompt]
     let server: Server
     let models: [LocalModel]
+    let appleRatings: [String: [String: Int]]?
 
     static let shared: Catalog = {
         guard let url = Bundle.main.url(forResource: "models", withExtension: "json"),

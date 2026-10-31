@@ -1,0 +1,12 @@
+{
+  "about": "Warm pass (model already loaded) totals from bench/run.sh on a MacBook Air (Apple silicon, 24 GB), 31 Oct 2026: [milliseconds, lines] per set.",
+  "index-translate-2b": {"en": [3083, 32], "hi": [3201, 20], "ja": [2056, 20]},
+  "hy-mt2-1.8b": {"en": [1975, 32], "hi": [2588, 20], "ja": [1552, 20]},
+  "gemma-4-e2b": {"en": [3983, 32], "hi": [2482, 20], "ja": [3246, 20]},
+  "gemma-4-e4b": {"en": [9604, 32], "hi": [5606, 20], "ja": [5753, 20]},
+  "index-translate-9b": {"en": [12806, 32], "hi": [12211, 20], "ja": [8433, 20]},
+  "hy-mt2-7b": {"en": [17168, 32], "hi": [30520, 20], "ja": [11362, 20]},
+  "translategemma-12b": {"en": [28154, 32], "hi": [26789, 20], "ja": [24284, 20]},
+  "translategemma-4b": {"en": [12939, 32], "hi": [6937, 20], "ja": [10767, 20]},
+  "apple": {"en": [7429, 32], "hi": [6192, 20], "ja": [5413, 20]}
+}

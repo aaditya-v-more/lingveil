@@ -24,7 +24,7 @@ struct ModelsView: View {
                 } header: {
                     Text("Recommended · tested on Macs with 8 GB")
                 } footer: {
-                    Text("Ratings come from our own tests on an M-series Mac with real app text. Models run only on this Mac; nothing you translate leaves it.")
+                    Text("Ratings are measured: speed from time per line, accuracy from how close the output is to Google Translate (chrF), on real app text. Models run only on this Mac; nothing you translate leaves it.")
                 }
             }
             Section("Built into macOS") {
@@ -138,8 +138,9 @@ struct ModelsView: View {
                     .font(.callout).foregroundStyle(.secondary)
                 HStack(spacing: 18) {
                     // The fast models haven't been through our tests yet (they need a per-pair download).
-                    Rating(label: "Speed", value: fast ? 0 : 1)
-                    Rating(label: "Accuracy", value: fast ? 0 : 4)
+                    let r = Catalog.shared.appleRatings?[fast ? "fast" : "highQuality"]
+                    Rating(label: "Speed", value: r?["speed"] ?? 0)
+                    Rating(label: "Accuracy", value: r?["accuracy"] ?? 0)
                     Text("Built in · runs outside Lingveil · ~20 languages").font(.caption).foregroundStyle(.secondary)
                 }
             }

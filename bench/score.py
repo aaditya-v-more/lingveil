@@ -23,15 +23,24 @@ def chrf(hyp, ref, beta=2.0):
     return 0.0 if p + r == 0 else (1 + beta**2) * p * r / (beta**2 * p + r) * 100
 
 here = os.path.dirname(os.path.abspath(__file__))
-rows = collections.defaultdict(dict)
-for path in sorted(glob.glob(os.path.join(here, "out", "*.txt"))):
-    name, tgt = os.path.basename(path)[:-4].rsplit("-", 1)
-    if name == "google":
-        continue
-    ref = open(os.path.join(here, "out", f"google-{tgt}.txt"), encoding="utf-8").read().split("\n")
-    hyp = open(path, encoding="utf-8").read().split("\n")
-    rows[name][tgt] = sum(chrf(h, r) for h, r in zip(hyp, ref)) / len(ref)
-print(f"{'engine':24} {'→en':>6} {'→hi':>6} {'→ja':>6} {'mean':>6}")
-for name, s in sorted(rows.items(), key=lambda kv: -sum(kv[1].values())):
-    vals = [s.get(t) for t in ("en", "hi", "ja")]
-    print(f"{name:24} " + " ".join(f"{v:6.1f}" if v is not None else "     -" for v in vals) + f" {sum(v for v in vals if v)/len([v for v in vals if v]):6.1f}")
+
+
+def scores():
+    """{engine: {target: mean chrF vs Google}} for every output in bench/out."""
+    rows = collections.defaultdict(dict)
+    for path in sorted(glob.glob(os.path.join(here, "out", "*.txt"))):
+        name, tgt = os.path.basename(path)[:-4].rsplit("-", 1)
+        if name == "google":
+            continue
+        ref = open(os.path.join(here, "out", f"google-{tgt}.txt"), encoding="utf-8").read().split("\n")
+        hyp = open(path, encoding="utf-8").read().split("\n")
+        rows[name][tgt] = sum(chrf(h, r) for h, r in zip(hyp, ref)) / len(ref)
+    return rows
+
+
+if __name__ == "__main__":
+    rows = scores()
+    print(f"{'engine':24} {'→en':>6} {'→hi':>6} {'→ja':>6} {'mean':>6}")
+    for name, s in sorted(rows.items(), key=lambda kv: -sum(kv[1].values())):
+        vals = [s.get(t) for t in ("en", "hi", "ja")]
+        print(f"{name:24} " + " ".join(f"{v:6.1f}" if v is not None else "     -" for v in vals) + f" {sum(v for v in vals if v)/len([v for v in vals if v]):6.1f}")

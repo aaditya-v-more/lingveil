@@ -37,13 +37,16 @@ also downloading models in the background, so the larger models' times are on th
 | TranslateGemma 4B (Q4_K_M) | 2.49 GB | 6.9–12.9 s | 78.8 | 58.8 | 69.0 | Slowest small model |
 | Hy-MT2 1.8B (Q4_K_M) | 1.13 GB | 1.6–2.6 s | 76.0 | 48.2 | 68.3 | Fastest; literal, a few wrong Hindi words |
 
-Ratings derived from this (speed / accuracy, 1–5): Hy-MT2 1.8B 5 / 3 ("Fastest"),
-Index-Translate 2B 4 / 4 ("Best balance", the default local model), Gemma 4 E2B 3 / 5
-("Most accurate"), Gemma 4 E4B 2 / 5, Index-Translate 9B 1 / 4, Hy-MT2 7B 1 / 4,
-TranslateGemma 12B 1 / 3, TranslateGemma 4B 1 / 3, Apple high quality 1 / 4. Apple's fast
-models need a per-pair download through macOS and are shown as not rated yet; Hy-MT2 30B-A3B
-keeps an estimated rating (it needs a 32 GB Mac). On a Mac with 8–24 GB none of the larger
-models beats Gemma 4 E2B, so the recommendations stay the three small models.
+Ratings are computed, not chosen: `bench/rate.py` turns the measurements into 1–5 stars
+with fixed thresholds and writes them to `shared/models.json`.
+- Accuracy from mean chrF: ≥ 75 → 5, ≥ 72 → 4, ≥ 68 → 3, ≥ 64 → 2, else 1.
+- Speed from warm ms per line: ≤ 90 → 5, ≤ 130 → 4, ≤ 200 → 3, ≤ 400 → 2, else 1.
+
+Current result: Gemma 4 E2B 3 / 5, Gemma 4 E4B 2 / 5, Index-Translate 9B 1 / 4, Hy-MT2 7B 1 / 4,
+Apple high quality 2 / 4, Index-Translate 2B 4 / 3, TranslateGemma 12B 1 / 3, TranslateGemma 4B
+1 / 3, Hy-MT2 1.8B 5 / 2 (speed / accuracy). The "Fastest", "Best balance" and "Most accurate"
+labels on the three recommended models are recommendations, not measurements. Hy-MT2 30B-A3B
+keeps an estimate (it needs a 32 GB Mac) and Apple's fast models are not rated until measured.
 
 On Windows (RTX 3060 laptop, Vulkan) Hy-MT2 1.8B measured 2.2–2.9 s warm and chrF 75.3 / 48.1
 (→en / →hi), the same range as the Mac.

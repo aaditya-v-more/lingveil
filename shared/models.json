@@ -114,7 +114,7 @@
       "id": "index-translate-2b",
       "name": "Index-Translate 2B",
       "maker": "IndexTeam",
-      "summary": "A translation model on Qwen 3.5 covering 150 languages. Close to the most accurate pick, with natural everyday wording.",
+      "summary": "A translation model on Qwen 3.5 covering 150 languages. In our tests a little slower than Hy-MT2 1.8B and more accurate.",
       "repo": "IndexTeam/Index-Translate-2B-GGUF",
       "file": "Index-Translate-2B.Q4_K_M.gguf",
       "sha256": "044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a",
@@ -123,7 +123,7 @@
       "languages": 150,
       "prompt": "index-translate",
       "speed": 4,
-      "accuracy": 4,
+      "accuracy": 3,
       "recommended": true,
       "badge": "Best balance",
       "license": "Apache 2.0",
@@ -134,7 +134,7 @@
       "id": "hy-mt2-1.8b",
       "name": "Hy-MT2 1.8B",
       "maker": "Tencent",
-      "summary": "Built only for translation and the quickest of the three. Wording is more literal and it slips on less common languages.",
+      "summary": "Built only for translation. The fastest model in our tests and the least accurate of the measured ones.",
       "repo": "tencent/Hy-MT2-1.8B-GGUF",
       "file": "Hy-MT2-1.8B-Q4_K_M.gguf",
       "sha256": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699",
@@ -143,7 +143,7 @@
       "languages": 36,
       "prompt": "hy-mt",
       "speed": 5,
-      "accuracy": 3,
+      "accuracy": 2,
       "recommended": true,
       "badge": "Fastest",
       "license": "Apache 2.0",
@@ -154,7 +154,7 @@
       "id": "gemma-4-e2b",
       "name": "Gemma 4 E2B",
       "maker": "Google",
-      "summary": "Google's general model. The most accurate in our tests, especially into Hindi, at a bigger download and a little less speed.",
+      "summary": "Google's general model. The highest accuracy score in our tests, at a bigger download and a little less speed.",
       "repo": "ggml-org/gemma-4-E2B-it-GGUF",
       "file": "gemma-4-E2B-it-Q4_0.gguf",
       "sha256": "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52",
@@ -290,5 +290,11 @@
       "supported": "hy-mt",
       "tested": false
     }
-  ]
+  ],
+  "appleRatings": {
+    "highQuality": {
+      "speed": 2,
+      "accuracy": 4
+    }
+  }
 }
