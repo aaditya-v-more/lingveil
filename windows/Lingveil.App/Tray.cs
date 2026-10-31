@@ -51,7 +51,7 @@ public static class Tray
 
     public static void Perform(string id) => Actions.FirstOrDefault(a => a.Id == id).Run?.Invoke();
 
-    static void RegisterShortcuts()
+    public static void RegisterShortcuts()
     {
         foreach (var k in keys.Values) HotKeys.Shared.Unregister(k);
         keys.Clear();
@@ -59,8 +59,8 @@ public static class Tray
         foreach (var a in Actions)
         {
             var text = Settings.Current.Shortcuts.GetValueOrDefault(a.Id, a.Default);
-            if (Shortcut.Parse(text) is not { } s) continue;
-            var id = HotKeys.Shared.Register(s, a.Run);
+            if (Shortcut.Parse(text) is not { } sc) continue;
+            var id = HotKeys.Shared.Register(sc, a.Run);
             keys[a.Id] = id;
             if (id == null) failed.Add(text);
             Debug.Log($"shortcut {a.Id} {text} {(id == null ? "taken" : "ok")}");
@@ -103,6 +103,10 @@ public static class Tray
         style.DropDownItems.Add(new Forms.ToolStripMenuItem("Cards (rounded, readable)", null, (_, _) => { s.Style = OverlayStyle.Card; s.Save(); }) { Checked = s.Style == OverlayStyle.Card });
         m.Items.Add(style);
 
+        m.Items.Add(new Forms.ToolStripSeparator());
+        m.Items.Add(new Forms.ToolStripMenuItem("Settings…", null, (_, _) => SettingsWindow.Open()));
+        m.Items.Add(new Forms.ToolStripMenuItem("Models…", null, (_, _) => SettingsWindow.Open("models")));
+        m.Items.Add(new Forms.ToolStripMenuItem("Support Lingveil on Ko-fi…", null, (_, _) => SettingsWindow.OpenUrl(SettingsWindow.KoFi)));
         m.Items.Add(new Forms.ToolStripSeparator());
         m.Items.Add(new Forms.ToolStripMenuItem("Quit Lingveil", null, (_, _) => { Live.Shared.Stop(); OneShot.Shared.Dismiss(); Application.Current.Shutdown(); }));
     }

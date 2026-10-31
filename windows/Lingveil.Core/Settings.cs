@@ -21,6 +21,9 @@ public sealed class Settings
     public string OllamaUrl { get; set; } = "http://localhost:11434";
     public string OllamaModel { get; set; } = "qwen3:4b";
     public Dictionary<string, string> Shortcuts { get; set; } = [];
+    /// Languages the user reads on screen; their OCR packs are the ones that matter.
+    public List<string> ReadLanguages { get; set; } = [];
+    public bool WebParagraphs { get; set; } = true;
 
     public static string Folder { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lingveil");
     static string FilePath => Path.Combine(Folder, "settings.json");

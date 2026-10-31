@@ -14,9 +14,30 @@ public static class Ocr
 
     static List<OcrEngine>? engines;
 
-    /// When nothing was read, a hint naming a language the user reads whose OCR pack is
-    /// missing. Filled in once Settings has the "Languages I read on screen" list.
-    public static string? MissingHint() => null;
+    /// Windows OCR pack tag for each target language Windows can recognize; others have none.
+    public static readonly IReadOnlyDictionary<string, string> PackTags = new Dictionary<string, string>
+    {
+        ["en"] = "en-US", ["es"] = "es-ES", ["fr"] = "fr-FR", ["de"] = "de-DE", ["it"] = "it-IT", ["pt"] = "pt-BR",
+        ["nl"] = "nl-NL", ["ru"] = "ru-RU", ["uk"] = "uk-UA", ["pl"] = "pl-PL", ["cs"] = "cs-CZ", ["sv"] = "sv-SE",
+        ["da"] = "da-DK", ["nb"] = "nb-NO", ["fi"] = "fi-FI", ["el"] = "el-GR", ["tr"] = "tr-TR", ["ro"] = "ro-RO",
+        ["hu"] = "hu-HU", ["ar"] = "ar-SA", ["zh-CN"] = "zh-CN", ["zh-TW"] = "zh-TW", ["ja"] = "ja-JP", ["ko"] = "ko-KR",
+    };
+
+    /// Whether an OCR pack for `code` is installed (any region of the language counts).
+    public static bool HasPack(string code)
+    {
+        if (!PackTags.TryGetValue(code, out var tag)) return false;
+        var lang = tag.Split('-')[0];
+        return OcrEngine.AvailableRecognizerLanguages.Any(l => code.StartsWith("zh") ? l.LanguageTag.Equals(tag, StringComparison.OrdinalIgnoreCase) : l.LanguageTag.Split('-')[0] == lang);
+    }
+
+    /// Forgets the loaded engines so a newly installed pack is picked up.
+    public static void Reset() => engines = null;
+
+    /// When nothing was read, a hint naming a language the user reads whose OCR pack is missing.
+    public static string? MissingHint() =>
+        Settings.Current.ReadLanguages.Where(c => PackTags.ContainsKey(c) && !HasPack(c)).Select(c => Shared.Language(c).Name).FirstOrDefault() is { } name
+            ? $"Install {name} text recognition in Settings to read this screen" : null;
 
     public static IReadOnlyList<string> Languages => OcrEngine.AvailableRecognizerLanguages.Select(l => l.LanguageTag).ToList();
 

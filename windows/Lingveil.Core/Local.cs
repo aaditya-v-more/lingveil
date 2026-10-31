@@ -12,7 +12,7 @@ namespace Lingveil.Core;
 /// comes from shared/models.json.
 public sealed record LocalModel(string Id, string Name, string Maker, string Summary, string Repo, string File, string Sha256,
                                 long Bytes, int RamGB, int Languages, string Prompt, int Speed, int Accuracy, bool Recommended,
-                                string? Badge, string License, IReadOnlySet<string>? Supported)
+                                string? Badge, string License, IReadOnlySet<string>? Supported, bool Tested)
 {
     public string Url => $"https://huggingface.co/{Repo}/resolve/main/{File}";
     public bool Supports(Language l) => Supported?.Contains(l.Code) ?? true;
@@ -37,7 +37,7 @@ public sealed record LocalModel(string Id, string Name, string Maker, string Sum
             return new LocalModel(Str(n, "id"), Str(n, "name"), Str(n, "maker"), Str(n, "summary"), Str(n, "repo"), Str(n, "file"), Str(n, "sha256"),
                 n["bytes"]!.GetValue<long>(), n["ramGB"]!.GetValue<int>(), n["languages"]!.GetValue<int>(), Str(n, "prompt"),
                 n["speed"]!.GetValue<int>(), n["accuracy"]!.GetValue<int>(), n["recommended"]!.GetValue<bool>(),
-                n["badge"]?.GetValue<string>(), Str(n, "license"), supported);
+                n["badge"]?.GetValue<string>(), Str(n, "license"), supported, n["tested"]?.GetValue<bool>() ?? false);
         }).ToList();
     }
 

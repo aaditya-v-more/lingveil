@@ -34,6 +34,18 @@ public static class Debug
         try { cmd = File.ReadAllText(Path.Combine(Dir!, "cmd.txt")).Trim(); File.Delete(Path.Combine(Dir!, "cmd.txt")); }
         catch { return; }
         if (cmd.Length == 0) return;
+        if (cmd.StartsWith("settings"))
+        {
+            // "settings:<tab>" opens Settings on that tab and saves the screen to settings-<tab>.png.
+            var tab = cmd.Contains(':') ? cmd[(cmd.IndexOf(':') + 1)..] : "general";
+            SettingsWindow.Open(tab);
+            await Task.Delay(800);
+            var m = Native.UnderCursor;
+            using (var px = Native.Capture(m.Bounds))
+            using (var snap = new Snapshot(px, m.Scale))
+                Headless.Write(snap, [], Path.Combine(Dir!, $"settings-{tab}.png"));
+            return;
+        }
         var parts = cmd.Split('|');
         var name = parts[0];
         if (parts.Length > 1 && parts[1].Split(',').Select(int.Parse).ToArray() is { Length: 4 } v)
