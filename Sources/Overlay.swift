@@ -44,7 +44,16 @@ final class OverlayWindow: NSPanel {
 }
 
 final class OverlayView: NSView {
-    var blocks: [Block] = [] { didSet { prepare(); hovered = nil; needsDisplay = true } }
+    var blocks: [Block] = [] { didSet { prepare(); hovered = nil; shifts = []; gone = []; needsDisplay = true } }
+    /// While following the app (see Follower): how far each block's text has moved since it
+    /// was laid out (points, up is positive), and blocks whose text isn't there any more.
+    private var shifts: [CGFloat] = []
+    private var gone = Set<Int>()
+    func move(_ s: [CGFloat], hidden: Set<Int>) {
+        guard s.count == blocks.count, s != shifts || hidden != gone else { return }
+        shifts = s; gone = hidden; needsDisplay = true
+    }
+    private func shift(_ i: Int) -> CGFloat { i < shifts.count ? shifts[i] : 0 }
     /// Each block's original text box, so a translation that needs more room only grows
     /// into space no other text occupies.
     private var baseRects: [CGRect] = []
@@ -262,8 +271,10 @@ final class OverlayView: NSView {
     override func draw(_ dirty: NSRect) {
         let ctx = NSGraphicsContext.current!.cgContext
         let card = Prefs.style == .card
-        for i in laid.indices where !dropped.contains(i) {
-            let l = laid[i]
+        for i in laid.indices where !dropped.contains(i) && !gone.contains(i) {
+            var l = laid[i]
+            let dy = shift(i)
+            if dy != 0 { l.fill.origin.y += dy; l.textRect.origin.y += dy }
             guard l.fill.intersects(dirty) else { continue }
             let p = blocks[i].palette
             let radius: CGFloat = card ? 5 : 2
@@ -279,8 +290,8 @@ final class OverlayView: NSView {
             if card { p.text.withAlphaComponent(0.18).setStroke(); path.lineWidth = 0.5; path.stroke() }
             l.text.draw(with: l.textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
         }
-        if let h = highlight, h < laid.count, !dropped.contains(h) {
-            let p = NSBezierPath(roundedRect: laid[h].fill.insetBy(dx: -3, dy: -2), xRadius: 4, yRadius: 4)
+        if let h = highlight, h < laid.count, !dropped.contains(h), !gone.contains(h) {
+            let p = NSBezierPath(roundedRect: laid[h].fill.offsetBy(dx: 0, dy: shift(h)).insetBy(dx: -3, dy: -2), xRadius: 4, yRadius: 4)
             NSColor.controlAccentColor.withAlphaComponent(0.85).setStroke(); p.lineWidth = 2; p.stroke()
         }
         if showBorder {

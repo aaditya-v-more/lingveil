@@ -27,6 +27,11 @@ enum Prefs {
         get { d.object(forKey: "webOptimize") as? Bool ?? true }
         set { d.set(newValue, forKey: "webOptimize") }
     }
+    /// Keep a translation in place while the app scrolls and changes (like Pixel phones).
+    static var followScroll: Bool {
+        get { d.object(forKey: "followScroll") as? Bool ?? true }
+        set { d.set(newValue, forKey: "followScroll") }
+    }
     static var accurateOCR: Bool {
         get { d.object(forKey: "accurateOCR") as? Bool ?? true }
         set { d.set(newValue, forKey: "accurateOCR") }

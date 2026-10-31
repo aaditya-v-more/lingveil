@@ -223,6 +223,23 @@ Windows:
 - UI Automation gives element frames, not glyph bounds or fonts, so UIA items take their box,
   line count and size from the OCR lines inside them (same rule as 2.4).
 
+### 2.12b Staying translated (toggle "Keep translating while you scroll and use the app", default on)
+- Translate Screen follows the front app's window (not the whole screen); a picked area
+  stays that area. The overlay is click-through, so the app is used normally; Esc is left
+  to the app. It ends with the shortcut again, the ✕ on a small bar at the bottom
+  ("Translated to <language>", spinner while re-reading), or another app coming forward.
+  Moving or resizing the window starts over on its new frame; closing it ends.
+- Motion: a capture stream of the area at 1 px per point, up to 30 fps, delivering only
+  changed frames (same 64×64 fingerprint as Live). Per frame: brightness image; per vertical
+  band (4) find the vertical move against the reference frame (8× smaller copy, search ±70%
+  of the height, then refine ±8 px on the full image); each block then takes whichever of
+  those moves, 0 or its previous move matches its own pixels best (mean difference ÷ the
+  block's contrast < 0.35, times 1 + |move − previous move| / 300 so repeated text doesn't
+  jump). No match → hide the block (original shows) until re-read.
+- When nothing has changed for 0.3 s (and at most every 0.8 s) re-capture and translate
+  again (cache makes known text instant). Results are only used if no frame changed while
+  reading; otherwise read again.
+
 ### 2.13 Web pages (toggle "Translate web pages by paragraph", default on)
 - Applies to text inside any web area (every browser, and web-based apps), detected from
   the accessibility tree, not by app name. Accessibility budget 600 ms instead of 350.

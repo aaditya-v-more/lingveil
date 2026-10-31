@@ -37,7 +37,7 @@ struct TutorialView: View {
         Page(icon: "character.bubble", title: "Welcome to Lingveil",
              text: "Translate anything on your screen, read anything aloud, or both. Everything works from the menu bar and a few shortcuts.", keys: []),
         Page(icon: "macwindow", title: "Translate what you see",
-             text: "Press the shortcut and the screen is repainted in your language, in place. Hold ⌥ to peek at the original; click or press Esc to close.", keys: [.screen, .area]),
+             text: "Press the shortcut and the app is repainted in your language, in place, and stays that way while you scroll and use it. Hold ⌥ to peek at the original; press the shortcut again to stop.", keys: [.screen, .area]),
         Page(icon: "speaker.wave.2", title: "Read anything aloud",
              text: "Reads the selected text, or the front window from top to bottom, outlining each part as it goes. Press again or Esc to stop.", keys: [.read]),
         Page(icon: "speaker.wave.2.bubble", title: "Translate and listen",
@@ -158,7 +158,9 @@ enum Tips {
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
         let text: String = switch k {
-        case .overlay: "Tip: hold ⌥ to see the original. Right-click to copy. \(Prefs.shortcut(.read)?.display ?? "") reads it aloud."
+        case .overlay: Prefs.followScroll
+            ? "The translation stays while you scroll and click. Hold ⌥ to see the original; \(Prefs.shortcut(.screen)?.display ?? "the shortcut") again ends it."
+            : "Tip: hold ⌥ to see the original. Right-click to copy. \(Prefs.shortcut(.read)?.display ?? "") reads it aloud."
         case .reading: "Reading aloud. Press \(Prefs.shortcut(.read)?.display ?? "the shortcut") again or Esc to stop. Voices and speed are in Settings → Voices."
         case .card: "Tip: the speaker button reads the translation aloud."
         case .live: "Live translation keeps this area translated as it changes. \(Prefs.shortcut(.live)?.display ?? "") or ⌥Esc stops it."

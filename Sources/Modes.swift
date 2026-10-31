@@ -2,8 +2,9 @@ import AppKit
 import Carbon.HIToolbox
 import ScreenCaptureKit
 
-/// One-shot translation of the screen (or a picked area): the overlay stays until a
-/// click, scroll, Esc, app switch, or the same shortcut again.
+/// Translation of the screen (or a picked area). It stays in place while the app scrolls
+/// and changes (see Follower) until the same shortcut, the ✕ on its bar, or another app
+/// comes forward. With following turned off it closes on a click, scroll or Esc instead.
 @MainActor
 final class OneShot {
     static let shared = OneShot()
@@ -12,6 +13,9 @@ final class OneShot {
     private var peek: Timer?
     private var appObserver: NSObjectProtocol?
     private var task: Task<Void, Never>?
+    private var follower: Follower?
+    private var bar: FollowBar?
+    private var windowTimer: Timer?
 
     var isShowing: Bool { window != nil }
     var debugView: OverlayView? { window?.view }
@@ -29,25 +33,45 @@ final class OneShot {
         }
     }
 
-    func run(screen: NSScreen, rect: CGRect?, then done: (@MainActor ([Block]) -> Void)? = nil) {
+    func run(screen: NSScreen, rect requested: CGRect?, then done: (@MainActor ([Block]) -> Void)? = nil) {
         guard Permissions.ensureScreenCapture() else { return }
         dismiss()
         Translation.preconnect()
         let app = Pipeline.frontApp
-        let w = OverlayWindow(frame: rect ?? screen.frame, interactive: true)
-        w.view.onClick = { [weak self] in self?.dismiss() }
-        w.view.onScroll = { [weak self] in self?.dismiss() }
+        let follow = Prefs.followScroll
+        // Following stays with the app in front, like translating inside an app on a phone:
+        // its window, not the whole screen (other windows changing would keep re-reading).
+        let front = follow && requested == nil ? Pipeline.frontWindowFrame(of: app).map { $0.intersection(screen.frame) } : nil
+        let rect = front.flatMap { $0.isEmpty ? nil : $0 } ?? requested
+        let area = (rect ?? screen.frame).intersection(screen.frame)
+        // Following: clicks and scrolls go through to the app underneath.
+        let w = OverlayWindow(frame: area, interactive: !follow)
+        if !follow {
+            w.view.onClick = { [weak self] in self?.dismiss() }
+            w.view.onScroll = { [weak self] in self?.dismiss() }
+        }
         w.show()
         window = w
-        armDismissal()
+        armDismissal(esc: !follow)
         StatusIcon.busy(true)
         let target = Language.named(Prefs.target)
+        let f = follow ? Follower(window: w, screen: screen, area: area) : nil
+        follower = f
+        if let f {
+            let b = FollowBar(over: area, on: screen, target: target)
+            f.onBusy = { [weak b] in b?.busy = $0 }
+            bar = b
+            if front != nil, let app { watchWindow(of: app, at: area, on: screen) }
+        }
         task = Task {
             let slow = Task { try? await Task.sleep(for: .milliseconds(350)); if !Task.isCancelled { w.view.status = "Translating…" } }
             defer { slow.cancel(); StatusIcon.busy(false) }
             do {
                 let tc = Date()
-                let snap = try await Capture.snapshot(screen, rect: rect)
+                async let captured = Capture.snapshot(screen, rect: rect)
+                await f?.start()
+                let token = f?.tracker.begin()
+                let snap = try await captured
                 let captureMs = Date().timeIntervalSince(tc) * 1000
                 let items = await Pipeline.items(in: snap, app: app)
                 for it in items { Debug.log("item \(it.fromAX ? "AX " : "OCR") \(Int(it.rect.minX)),\(Int(it.rect.minY)) \(Int(it.rect.width))x\(Int(it.rect.height)) \(it.text.prefix(50))") }
@@ -59,8 +83,12 @@ final class OneShot {
                 guard !Task.isCancelled, window === w else { return }
                 slow.cancel()
                 w.view.status = nil
-                w.view.blocks = blocks
-                if blocks.isEmpty { flash(w, "Nothing to translate into \(target.name)") }
+                if let f, let token, f.adopt(blocks, token) {} else {
+                    w.view.blocks = blocks
+                    f?.refreshWhenStill()   // the screen moved while it was being read
+                }
+                if blocks.isEmpty, f != nil { w.view.status = "Nothing to translate yet"; Task { try? await Task.sleep(for: .seconds(1.5)); if w.view.status == "Nothing to translate yet" { w.view.status = nil } } }
+                else if blocks.isEmpty { flash(w, "Nothing to translate into \(target.name)") }
                 else { Tips.show(.overlay); Support.used(); done?(blocks) }
             } catch {
                 guard window === w else { return }
@@ -70,13 +98,27 @@ final class OneShot {
         }
     }
 
+    /// Moving or resizing the window starts over on its new frame; closing it ends.
+    private func watchWindow(of app: NSRunningApplication, at frame: CGRect, on screen: NSScreen) {
+        windowTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.follower != nil else { return }
+                guard let now = Pipeline.frontWindowFrame(of: app)?.intersection(screen.frame), !now.isEmpty else { self.dismiss(); return }
+                if abs(now.minX - frame.minX) + abs(now.minY - frame.minY) + abs(now.width - frame.width) + abs(now.height - frame.height) > 2 {
+                    self.run(screen: screen, rect: nil)
+                }
+            }
+        }
+    }
+
     private func flash(_ w: OverlayWindow, _ msg: String) {
         w.view.status = msg
         Task { try? await Task.sleep(for: .seconds(2)); if window === w { dismiss() } }
     }
 
-    private func armDismissal() {
-        escKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: 0)) { [weak self] in self?.dismiss() }
+    private func armDismissal(esc: Bool) {
+        // While following, Esc belongs to the app being used.
+        if esc { escKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: 0)) { [weak self] in self?.dismiss() } }
         appObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] n in
             let a = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             if a?.processIdentifier != getpid() { MainActor.assumeIsolated { self?.dismiss() } }
@@ -94,11 +136,58 @@ final class OneShot {
     func dismiss() {
         if Narrator.shared.isSpeaking, window != nil { Narrator.shared.stop() }
         task?.cancel(); task = nil
+        follower?.stop(); follower = nil
+        windowTimer?.invalidate(); windowTimer = nil
+        bar?.close(); bar = nil
         if let k = escKey { HotKeys.shared.unregister(k); escKey = nil }
         if let o = appObserver { NSWorkspace.shared.notificationCenter.removeObserver(o); appObserver = nil }
         peek?.invalidate(); peek = nil
         if let w = window { window = nil; w.fadeOut { Memory.relieve() }; Support.maybeAsk() }
     }
+}
+
+/// A small bar at the bottom of a followed translation: the language, a spinner while new
+/// text is being translated, and ✕ to stop.
+@MainActor
+final class FollowBar: NSObject {
+    private let panel: NSPanel
+    private let spinner = NSProgressIndicator()
+    var busy = false { didSet { busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil) } }
+
+    init(over area: CGRect, on screen: NSScreen, target: Language) {
+        let icon = NSImageView(image: NSImage(systemSymbolName: "character.bubble", accessibilityDescription: nil)!)
+        icon.contentTintColor = .white
+        let label = NSTextField(labelWithString: "Translated to \(target.name)")
+        label.font = .systemFont(ofSize: 12, weight: .medium); label.textColor = .white
+        spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Stop translating")!, target: nil, action: nil)
+        close.isBordered = false; close.contentTintColor = NSColor.white.withAlphaComponent(0.75)
+        close.toolTip = "Stop translating"
+        let stack = NSStackView(views: [icon, label, spinner, close])
+        stack.spacing = 7
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 11, bottom: 6, right: 8)
+        let fx = NSVisualEffectView()
+        fx.material = .hudWindow; fx.state = .active; fx.wantsLayer = true
+        fx.layer?.cornerRadius = 15; fx.layer?.masksToBounds = true
+        fx.addSubview(stack)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: fx.leadingAnchor), stack.trailingAnchor.constraint(equalTo: fx.trailingAnchor),
+                                     stack.topAnchor.constraint(equalTo: fx.topAnchor), stack.bottomAnchor.constraint(equalTo: fx.bottomAnchor)])
+        let size = stack.fittingSize
+        let bottom = max(area.minY, screen.visibleFrame.minY) + 12
+        panel = NSPanel(contentRect: CGRect(x: (area.midX - size.width / 2).rounded(), y: bottom, width: size.width, height: size.height),
+                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        super.init()
+        close.target = self; close.action = #selector(stop)
+        panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        panel.contentView = fx
+        panel.orderFrontRegardless()
+    }
+
+    @objc private func stop() { OneShot.shared.dismiss() }
+    func close() { panel.orderOut(nil) }
 }
 
 // MARK: - Region picker

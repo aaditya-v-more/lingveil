@@ -169,6 +169,13 @@ enum Debug {
                     }
                     return
                 }
+                if name == "axprobe" {
+                    // Which on-screen text in the front app could be rewritten through
+                    // accessibility: counts per role, settable or not, and a no-op write test.
+                    let target = parts.count > 1 ? parts[1] : nil
+                    Task.detached { Debug.log(AXProbe.run(target)) }
+                    return
+                }
                 if name == "dump" {
                     let blocks = Live.shared.debugView?.blocks ?? []
                     let log = blocks.map { "\($0.item.text.prefix(40)) -> \($0.translation.prefix(60))" }.joined(separator: "\n")
@@ -229,5 +236,39 @@ enum Debug {
         v.draw(v.bounds)
         NSGraphicsContext.restoreGraphicsState()
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+}
+
+enum AXProbe {
+    static func run(_ name: String?) -> String {
+        guard let app = name.flatMap({ n in NSWorkspace.shared.runningApplications.first { $0.localizedName == n } }) ?? NSWorkspace.shared.frontmostApplication else { return "axprobe: no app" }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var stats: [String: (n: Int, settable: Int, wrote: Int, err: Set<Int32>)] = [:]
+        var queue = [root], seen = 0
+        while !queue.isEmpty, seen < 4000 {
+            let e = queue.removeFirst(); seen += 1
+            var role: CFTypeRef?
+            AXUIElementCopyAttributeValue(e, kAXRoleAttribute as CFString, &role)
+            let r = role as? String ?? "?"
+            var value: CFTypeRef?
+            if AXUIElementCopyAttributeValue(e, kAXValueAttribute as CFString, &value) == .success, let v = value as? String, !v.isEmpty {
+                var st = stats[r] ?? (0, 0, 0, [])
+                st.n += 1
+                var ok: DarwinBoolean = false
+                if AXUIElementIsAttributeSettable(e, kAXValueAttribute as CFString, &ok) == .success, ok.boolValue {
+                    st.settable += 1
+                    // Writes the same text back (changes nothing) to see if a write is accepted.
+                    if r != "AXTextArea" && r != "AXTextField" {
+                        let err = AXUIElementSetAttributeValue(e, kAXValueAttribute as CFString, v as CFString)
+                        if err == .success { st.wrote += 1 } else { st.err.insert(err.rawValue) }
+                    }
+                }
+                stats[r] = st
+            }
+            var kids: CFTypeRef?
+            if AXUIElementCopyAttributeValue(e, kAXChildrenAttribute as CFString, &kids) == .success, let k = kids as? [AXUIElement] { queue += k }
+        }
+        return "axprobe \(app.localizedName ?? "?") (\(seen) elements): " + stats.sorted { $0.key < $1.key }
+            .map { "\($0.key) \($0.value.n) text, \($0.value.settable) settable, \($0.value.wrote) write ok \($0.value.err.sorted())" }.joined(separator: "; ")
     }
 }

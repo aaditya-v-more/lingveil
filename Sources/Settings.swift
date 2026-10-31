@@ -59,6 +59,7 @@ final class SettingsModel: ObservableObject {
     @Published var useAX = Prefs.useAccessibility { didSet { Prefs.useAccessibility = useAX } }
     @Published var accurate = Prefs.accurateOCR { didSet { Prefs.accurateOCR = accurate } }
     @Published var web = Prefs.webOptimize { didSet { Prefs.webOptimize = web } }
+    @Published var follow = Prefs.followScroll { didSet { Prefs.followScroll = follow } }
     @Published var hover = Prefs.hoverWithOption { didSet { Prefs.hoverWithOption = hover; HoverWatcher.shared.update() } }
     @Published var cloudKey = Prefs.googleCloudKey { didSet { Prefs.googleCloudKey = cloudKey } }
     @Published var deeplKey = Prefs.deeplKey { didSet { Prefs.deeplKey = deeplKey } }
@@ -105,6 +106,7 @@ struct SettingsView: View {
                 ForEach(OverlayStyle.allCases) { Text($0.title).tag($0) }
             }
             Toggle("Read app text directly (Accessibility) for exact, native-looking results", isOn: $m.useAX)
+            Toggle("Keep translating while you scroll and use the app", isOn: $m.follow)
             Toggle("Translate web pages by paragraph (any browser)", isOn: $m.web)
             Toggle("Accurate text recognition (slower, better for small text)", isOn: $m.accurate)
             Toggle("Hold ⌥ and rest the pointer on text to translate it", isOn: $m.hover)
