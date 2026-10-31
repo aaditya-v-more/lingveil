@@ -5,13 +5,18 @@ enum Pipeline {
     /// Finds text in the snapshot. The frontmost app's Accessibility text is preferred
     /// (exact strings, frames, fonts); OCR, run at the same time, confirms that text is
     /// actually visible and fills in anything Accessibility can't see (images, games, video).
+    nonisolated(unsafe) static var timings = ""
+
     static func items(in snap: Snapshot, app: NSRunningApplication?, fastOCR: Bool = false) async -> [TextItem] {
+        let t0 = Date()
         async let ocr = OCR.items(in: snap, fast: fastOCR)
         var ax: [TextItem] = []
         if Prefs.useAccessibility, let app, app.processIdentifier != getpid() {
             ax = await Task.detached(priority: .userInitiated) { AXText.items(app: app, within: snap.frame) }.value
         }
+        let axTime = Date().timeIntervalSince(t0)
         let seen = estimateSizes(await ocr)
+        timings = String(format: "ax %.0f ms (%d), ocr done at %.0f ms (%d)", axTime * 1000, ax.count, Date().timeIntervalSince(t0) * 1000, seen.count)
         guard !ax.isEmpty else { return seen }
 
         func overlap(_ a: CGRect, _ b: CGRect) -> CGFloat {
@@ -32,17 +37,44 @@ enum Pipeline {
 
     /// Translates items and samples colors for each. Items already in the target language,
     /// or with nothing to translate (numbers, symbols), are left out so the original shows.
-    static func blocks(for items: [TextItem], in snap: Snapshot, to target: Language) async throws -> [Block] {
+    /// Work goes out in batches; `progress` receives everything finished so far as each
+    /// batch lands, so most of the screen is painted before the slowest reply arrives.
+    static func blocks(for items: [TextItem], in snap: Snapshot, to target: Language,
+                       progress: (@MainActor ([Block]) -> Void)? = nil) async throws -> [Block] {
         let todo = items.filter { $0.hasLetters && !Detect.isAlready($0.text, in: target) }
         guard !todo.isEmpty else { return [] }
-        let translated = try await Translation.translate(todo.map(\.text), to: target)
-        return await Task.detached(priority: .userInitiated) {
-            zip(todo, translated).compactMap { item, t -> Block? in
-                let clean = t.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !clean.isEmpty, clean.caseInsensitiveCompare(item.text) != .orderedSame else { return nil }
-                return Block(item: item, translation: caseMatched(clean, original: item.text), palette: Palette.sample(snap.image, px: snap.pixelRect(item.rect)))
+        let t0 = Date()
+        // Top of the screen first, so the first batch to land is what the eye reads first.
+        let ordered = todo.sorted { $0.rect.maxY > $1.rect.maxY }
+        let batches = stride(from: 0, to: ordered.count, by: 30).map { Array(ordered[$0..<min($0 + 30, ordered.count)]) }
+        var done: [Block] = []
+        var firstError: Error?
+        await withTaskGroup(of: Result<[Block], Error>.self) { g in
+            for batch in batches {
+                g.addTask {
+                    do {
+                        let translated = try await Translation.translate(batch.map(\.text), to: target)
+                        return .success(zip(batch, translated).compactMap { item, t -> Block? in
+                            let clean = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !clean.isEmpty, clean.caseInsensitiveCompare(item.text) != .orderedSame else { return nil }
+                            return Block(item: item, translation: caseMatched(clean, original: item.text),
+                                         palette: Palette.sample(snap.pixels, rect: snap.pixelRect(item.rect)))
+                        })
+                    } catch { return .failure(error) }
+                }
             }
-        }.value
+            for await r in g {
+                switch r {
+                case .success(let b):
+                    done += b
+                    if let progress { let snapshot = done; await MainActor.run { progress(snapshot) } }
+                case .failure(let e): firstError = firstError ?? e
+                }
+            }
+        }
+        timings += String(format: ", translate %.0f ms (%d)", Date().timeIntervalSince(t0) * 1000, todo.count)
+        if done.isEmpty, let firstError { throw firstError }
+        return done
     }
 
     /// OCR boxes vary in height with the glyphs inside them, so the size is taken from how

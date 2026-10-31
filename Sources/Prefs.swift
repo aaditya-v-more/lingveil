@@ -7,11 +7,11 @@ enum Prefs {
     static let d = UserDefaults.standard
 
     static var target: String {
-        get { d.string(forKey: "target") ?? Language.systemDefault.code }
+        get { ProcessInfo.processInfo.environment["LINGVEIL_TARGET"] ?? d.string(forKey: "target") ?? Language.systemDefault.code }
         set { d.set(newValue, forKey: "target") }
     }
     static var engine: EngineKind {
-        get { EngineKind(rawValue: d.string(forKey: "engine") ?? "") ?? .auto }
+        get { EngineKind(rawValue: ProcessInfo.processInfo.environment["LINGVEIL_ENGINE"] ?? d.string(forKey: "engine") ?? "") ?? .auto }
         set { d.set(newValue.rawValue, forKey: "engine") }
     }
     static var style: OverlayStyle {

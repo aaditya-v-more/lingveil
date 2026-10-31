@@ -15,14 +15,14 @@ actor OCRHelper {
     private var input: FileHandle?
     private var output: FileHandle?
 
-    func recognize(_ image: CGImage, fast: Bool, minHeight: CGFloat) async -> [(String, CGRect)] {
-        guard let pixels = Self.bgra(image) else { return [] }
+    func recognize(_ pixels: PixelBuffer, fast: Bool, minHeight: CGFloat) async -> [(String, CGRect)] {
+        let bytes = Data(bytesNoCopy: pixels.base, count: pixels.count, deallocator: .none)
         for _ in 0..<2 {
-            if let r = try? exchange(pixels, image.width, image.height, fast: fast, minHeight: minHeight) { return r }
+            if let r = try? exchange(bytes, pixels.width, pixels.height, fast: fast, minHeight: minHeight) { return r }
             stop()
         }
         // Helper unavailable: do it here rather than fail.
-        return OCR.recognize(image, fast: fast, minHeight: minHeight)
+        return withExtendedLifetime(pixels) { OCR.recognize(pixels.cgImage, fast: fast, minHeight: minHeight) }
     }
 
     /// Starts the helper and runs one tiny recognition so the models are compiled and
@@ -34,8 +34,8 @@ actor OCRHelper {
             ("Hello こんにちは 你好" as NSString).draw(at: CGPoint(x: 10, y: 20), withAttributes: [.font: NSFont.systemFont(ofSize: 22)])
             return true
         }
-        guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
-        _ = await recognize(cg, fast: false, minHeight: 4)
+        guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil), let px = PixelBuffer(cg) else { return }
+        _ = await recognize(px, fast: false, minHeight: 4)
     }
 
     private func exchange(_ pixels: Data, _ w: Int, _ h: Int, fast: Bool, minHeight: CGFloat) throws -> [(String, CGRect)] {
@@ -74,21 +74,6 @@ actor OCRHelper {
     private func stop() {
         process?.terminate()
         process = nil; input = nil; output = nil
-    }
-
-    /// Raw BGRA bytes for the helper, drawn once.
-    static func bgra(_ image: CGImage) -> Data? {
-        let w = image.width, h = image.height
-        var data = Data(count: w * h * 4)
-        let ok = data.withUnsafeMutableBytes { raw -> Bool in
-            guard let ctx = CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-            else { return false }
-            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-            return true
-        }
-        return ok ? data : nil
     }
 
     // MARK: helper side

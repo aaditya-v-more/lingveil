@@ -14,26 +14,16 @@ struct Palette {
 
     /// `px` is the text's rect in image pixels. Samples a ring just outside it for the
     /// background and the pixels that differ most from that background for the text.
-    static func sample(_ image: CGImage, px: CGRect) -> Palette {
-        let ring = max(2, min(6, px.height * 0.15)).rounded()
-        let outer = px.insetBy(dx: -ring, dy: -ring).integral
-            .intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        guard outer.width >= 4, outer.height >= 4, let crop = image.cropping(to: outer) else { return .fallback }
-
-        let w = crop.width, h = crop.height
-        var buf = [UInt8](repeating: 0, count: w * h * 4)
-        let drew: Bool = buf.withUnsafeMutableBytes { raw in
-            guard let ctx = CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            ctx.draw(crop, in: CGRect(x: 0, y: 0, width: w, height: h))
-            return true
-        }
-        guard drew else { return .fallback }
-
+    static func sample(_ px: PixelBuffer, rect: CGRect) -> Palette {
+        let ring = max(2, min(6, rect.height * 0.15)).rounded()
+        let outer = rect.insetBy(dx: -ring, dy: -ring).integral
+            .intersection(CGRect(x: 0, y: 0, width: px.width, height: px.height))
+        guard outer.width >= 4, outer.height >= 4 else { return .fallback }
+        let ox = Int(outer.minX), oy = Int(outer.minY), w = Int(outer.width), h = Int(outer.height)
+        let rect = rect.offsetBy(dx: -outer.minX, dy: -outer.minY)
         // Inner rect in crop coordinates (rows top to bottom).
-        let ix0 = Int(px.minX - outer.minX), iy0 = Int(px.minY - outer.minY)
-        let ix1 = ix0 + Int(px.width), iy1 = iy0 + Int(px.height)
+        let ix0 = Int(rect.minX), iy0 = Int(rect.minY)
+        let ix1 = ix0 + Int(rect.width), iy1 = iy0 + Int(rect.height)
         var topPx: [RGB] = [], botPx: [RGB] = [], sidePx: [RGB] = [], inner: [(RGB, Int)] = []
         let step = max(1, (w * h) / 40_000)   // cap work on huge blocks
         var i = 0
@@ -41,8 +31,7 @@ struct Palette {
             for x in 0..<w {
                 i += 1
                 if i % step != 0 { continue }
-                let o = (y * w + x) * 4
-                let c = RGB(Double(buf[o]) / 255, Double(buf[o + 1]) / 255, Double(buf[o + 2]) / 255)
+                let c = px.rgb(ox + x, oy + y)
                 let inside = x >= ix0 && x < ix1 && y >= iy0 && y < iy1
                 if inside { inner.append((c, y)) }
                 else if y < iy0 { topPx.append(c) }

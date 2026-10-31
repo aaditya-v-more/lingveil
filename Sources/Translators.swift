@@ -61,11 +61,28 @@ enum Translation {
             chunks[chunks.count - 1].append(t); chars += t.count
         }
         return try await withThrowingTaskGroup(of: (Int, [String]).self) { g in
-            for (i, c) in chunks.enumerated() { g.addTask { (i, try await body(c)) } }
+            let t0 = Date()
+            let debug = ProcessInfo.processInfo.environment["LINGVEIL_DEBUG_TEXTS"] != nil
+            for (i, c) in chunks.enumerated() {
+                g.addTask {
+                    let r = try await body(c)
+                    if debug { print(String(format: "  chunk %d (%d) done at %.0f ms", i, c.count, Date().timeIntervalSince(t0) * 1000)) }
+                    return (i, r)
+                }
+            }
             var parts = [[String]](repeating: [], count: chunks.count)
             for try await (i, r) in g { parts[i] = r }
             return parts.flatMap { $0 }
         }
+    }
+
+    /// Opens (or keeps) the HTTPS connection while the screen is still being captured and
+    /// read, so the real request doesn't pay for DNS and TLS.
+    static func preconnect() {
+        guard [.auto, .google].contains(Prefs.engine) else { return }
+        var req = URLRequest(url: URL(string: "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=en&q=ok")!)
+        req.timeoutInterval = 3
+        session.dataTask(with: req).resume()
     }
 
     static let session: URLSession = {
@@ -82,7 +99,7 @@ enum Translation {
 /// no account or key.
 struct GoogleWeb: Translator {
     func translate(_ texts: [String], to target: Language) async throws -> [String] {
-        try await Translation.chunked(texts, maxItems: 120, maxChars: 4500) { chunk in
+        try await Translation.chunked(texts, maxItems: 30, maxChars: 1500) { chunk in
             var c = URLComponents(string: "https://clients5.google.com/translate_a/t")!
             c.queryItems = [.init(name: "client", value: "dict-chrome-ex"), .init(name: "sl", value: "auto"), .init(name: "tl", value: target.code)]
             var req = URLRequest(url: c.url!)
@@ -93,15 +110,18 @@ struct GoogleWeb: Translator {
             guard (resp as? HTTPURLResponse)?.statusCode == 200, let json = try? JSONSerialization.jsonObject(with: data) else {
                 throw LingveilError.message("Google Translate is not reachable right now")
             }
-            let rows: [Any] = (json as? [Any]) ?? []
-            let out: [String] = rows.map { row in
-                if let a = row as? [Any], let s = a.first as? String { return s }
-                return row as? String ?? ""
+            // Rows are [translation, detected language]; a single string comes back flattened.
+            var rows: [Any] = (json as? [Any]) ?? []
+            if chunk.count == 1, rows.first is String { rows = [rows] }
+            guard rows.count == chunk.count else { throw LingveilError.message("Unexpected reply from Google Translate") }
+            let target = target.code.lowercased()
+            return zip(chunk, rows).map { original, row in
+                guard let a = row as? [Any], let t = a.first as? String else { return original }
+                // Already in the target language: keep the original rather than Google's echo,
+                // which would "correct" OCR slips on screen.
+                if let src = (a.last as? String)?.lowercased(), src == target || target.hasPrefix(src + "-") { return original }
+                return t
             }
-            // A single string comes back flattened as [translation, lang].
-            if chunk.count == 1, let first = out.first { return [first] }
-            guard out.count == chunk.count else { throw LingveilError.message("Unexpected reply from Google Translate") }
-            return out
         }
     }
 
@@ -209,7 +229,8 @@ enum Detect {
         r.processString(text)
         guard let (best, p) = r.languageHypotheses(withMaximum: 1).first else { return false }
         let id = best.rawValue
-        return p > 0.85 && (id == lang.appleID || id.hasPrefix(lang.appleID + "-") || lang.appleID.hasPrefix(id))
+        let words = text.split(separator: " ").count
+        return p > (words >= 3 ? 0.6 : 0.8) && (id == lang.appleID || id.hasPrefix(lang.appleID + "-") || lang.appleID.hasPrefix(id))
     }
 
     static func dominant(_ texts: [String], excluding target: Language) -> String? {

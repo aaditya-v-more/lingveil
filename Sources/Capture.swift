@@ -2,16 +2,71 @@ import AppKit
 import ScreenCaptureKit
 
 /// A captured piece of the screen. `frame` is in global AppKit points (origin bottom-left
-/// of the primary display); the image covers exactly that rect at `scale` pixels per point.
+/// of the primary display); the pixels cover exactly that rect at `scale` pixels per point.
 struct Snapshot {
-    let image: CGImage
+    let pixels: PixelBuffer
     let frame: CGRect
     let scale: CGFloat
 
-    /// Global AppKit rect -> pixel rect in `image` (top-left origin).
+    init(pixels: PixelBuffer, frame: CGRect, scale: CGFloat) {
+        self.pixels = pixels; self.frame = frame; self.scale = scale
+    }
+
+    init?(image: CGImage, frame: CGRect, scale: CGFloat) {
+        guard let p = PixelBuffer(image) else { return nil }
+        self.init(pixels: p, frame: frame, scale: scale)
+    }
+
+    var image: CGImage { pixels.cgImage }
+
+    /// Global AppKit rect -> pixel rect (top-left origin).
     func pixelRect(_ r: CGRect) -> CGRect {
         CGRect(x: (r.minX - frame.minX) * scale, y: (frame.maxY - r.maxY) * scale,
                width: r.width * scale, height: r.height * scale)
+    }
+}
+
+/// sRGB BGRA pixels in memory mapped directly from the kernel. A screen is ~30 MB, and
+/// mapping it ourselves means it is returned the moment the translation is done, instead
+/// of lingering in malloc's caches or in a decoded-image cache.
+final class PixelBuffer: @unchecked Sendable {
+    let width: Int, height: Int
+    let base: UnsafeMutableRawPointer
+    var bytesPerRow: Int { width * 4 }
+    var count: Int { width * height * 4 }
+    static let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+    static let space = CGColorSpace(name: CGColorSpace.sRGB)!
+
+    init?(width: Int, height: Int) {
+        guard width > 0, height > 0 else { return nil }
+        let m = mmap(nil, width * height * 4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0)
+        guard let m, m != MAP_FAILED else { return nil }
+        self.width = width; self.height = height; base = m
+    }
+
+    convenience init?(_ image: CGImage) {
+        self.init(width: image.width, height: image.height)
+        guard let ctx = CGContext(data: base, width: width, height: height, bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+                                  space: Self.space, bitmapInfo: Self.bitmapInfo) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+
+    deinit { munmap(base, count) }
+
+    /// A CGImage over these bytes (no copy); keeps the buffer alive while it exists.
+    var cgImage: CGImage {
+        let provider = CGDataProvider(dataInfo: Unmanaged.passRetained(self).toOpaque(), data: base, size: count) { info, _, _ in
+            Unmanaged<PixelBuffer>.fromOpaque(info!).release()
+        }!
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                       space: Self.space, bitmapInfo: CGBitmapInfo(rawValue: Self.bitmapInfo), provider: provider,
+                       decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+    }
+
+    /// (r, g, b) in 0...1 at a pixel, top-left origin.
+    @inline(__always) func rgb(_ x: Int, _ y: Int) -> RGB {
+        let p = base.assumingMemoryBound(to: UInt8.self) + (y * width + x) * 4
+        return RGB(Double(p[2]) / 255, Double(p[1]) / 255, Double(p[0]) / 255)
     }
 }
 
@@ -51,7 +106,8 @@ enum Capture {
         cfg.showsCursor = false
         cfg.captureResolution = .best
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
-        return Snapshot(image: image, frame: area, scale: scale)
+        guard let snap = Snapshot(image: image, frame: area, scale: scale) else { throw LingveilError.message("Could not read the screen") }
+        return snap
     }
 
     /// Global AppKit rect -> display-local rect with top-left origin, as ScreenCaptureKit wants.

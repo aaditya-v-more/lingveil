@@ -14,6 +14,7 @@ final class OneShot {
     private var task: Task<Void, Never>?
 
     var isShowing: Bool { window != nil }
+    var debugView: OverlayView? { window?.view }
 
     func toggleScreen() {
         if isShowing { dismiss(); return }
@@ -31,6 +32,7 @@ final class OneShot {
     func run(screen: NSScreen, rect: CGRect?) {
         guard Permissions.ensureScreenCapture() else { return }
         dismiss()
+        Translation.preconnect()
         let app = Pipeline.frontApp
         let w = OverlayWindow(frame: rect ?? screen.frame, interactive: true)
         w.view.onClick = { [weak self] in self?.dismiss() }
@@ -44,9 +46,15 @@ final class OneShot {
             let slow = Task { try? await Task.sleep(for: .milliseconds(350)); if !Task.isCancelled { w.view.status = "Translating…" } }
             defer { slow.cancel(); StatusIcon.busy(false) }
             do {
+                let tc = Date()
                 let snap = try await Capture.snapshot(screen, rect: rect)
+                let captureMs = Date().timeIntervalSince(tc) * 1000
                 let items = await Pipeline.items(in: snap, app: app)
-                let blocks = try await Pipeline.blocks(for: items, in: snap, to: target)
+                let blocks = try await Pipeline.blocks(for: items, in: snap, to: target) { partial in
+                    guard self.window === w else { return }
+                    slow.cancel(); w.view.status = nil; w.view.blocks = partial
+                }
+                Pipeline.timings = String(format: "capture %.0f ms, ", captureMs) + Pipeline.timings
                 guard !Task.isCancelled, window === w else { return }
                 slow.cancel()
                 w.view.status = nil
@@ -86,7 +94,7 @@ final class OneShot {
         if let k = escKey { HotKeys.shared.unregister(k); escKey = nil }
         if let o = appObserver { NSWorkspace.shared.notificationCenter.removeObserver(o); appObserver = nil }
         peek?.invalidate(); peek = nil
-        if let w = window { window = nil; w.fadeOut() }
+        if let w = window { window = nil; w.fadeOut { Memory.relieve() } }
     }
 }
 
@@ -167,12 +175,11 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
     private var window: OverlayWindow?
     private var screen: NSScreen?
     private var area: CGRect = .zero
-    private var pending: CGImage?
+    private var pending: PixelBuffer?
     private var working = false
     private var lastChange = Date.distantPast
     private var stopKey: UInt32?
     private let queue = DispatchQueue(label: "lingveil.live", qos: .userInitiated)
-    private nonisolated(unsafe) let ci = CIContext(options: [.cacheIntermediates: false])
 
     var isRunning: Bool { stream != nil }
 
@@ -216,7 +223,7 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
         if let k = stopKey { HotKeys.shared.unregister(k); stopKey = nil }
         let s = stream; stream = nil
         Task { try? await s?.stopCapture() }
-        window?.fadeOut(); window = nil
+        window?.fadeOut { Memory.relieve() }; window = nil
         pending = nil
         StatusIcon.live(false)
     }
@@ -226,27 +233,29 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
               let info = (CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
               let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
               let pb = sb.imageBuffer else { return }
-        let ci = CIImage(cvPixelBuffer: pb)
-        let img = self.ci.createCGImage(ci, from: ci.extent)
-        guard let img else { return }
-        Task { @MainActor in self.frameChanged(img) }
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb), row = CVPixelBufferGetBytesPerRow(pb)
+        guard let src = CVPixelBufferGetBaseAddress(pb), let px = PixelBuffer(width: w, height: h) else { return }
+        for y in 0..<h { memcpy(px.base + y * px.bytesPerRow, src + y * row, w * 4) }
+        Task { @MainActor in self.frameChanged(px) }
     }
 
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         Task { @MainActor in self.stop() }
     }
 
-    private func frameChanged(_ img: CGImage) {
-        pending = img
+    private func frameChanged(_ px: PixelBuffer) {
+        pending = px
         lastChange = Date()
         guard !working else { return }
         working = true
         Task {
             // Let scrolling / animation settle briefly before reading the text.
             while Date().timeIntervalSince(lastChange) < 0.25 { try? await Task.sleep(for: .milliseconds(80)) }
-            while let img = pending, let screen, isRunning {
+            while let px = pending, let screen, isRunning {
                 pending = nil
-                let snap = Snapshot(image: img, frame: area, scale: screen.backingScaleFactor)
+                let snap = Snapshot(pixels: px, frame: area, scale: screen.backingScaleFactor)
                 let items = await Pipeline.items(in: snap, app: Pipeline.frontApp)
                 if let blocks = try? await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target)), isRunning {
                     window?.view.blocks = blocks
@@ -373,7 +382,7 @@ final class Bubble {
     func close() {
         if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
         if let k = escKey { HotKeys.shared.unregister(k); escKey = nil }
-        panel?.orderOut(nil); panel = nil
+        if panel != nil { panel?.orderOut(nil); panel = nil; Memory.relieve() }
     }
 }
 
@@ -399,5 +408,15 @@ final class HoverWatcher {
         if hypot(p.x - lastPoint.x, p.y - lastPoint.y) > 3 { lastPoint = p; still = 0; return }
         still += 1
         if still == 3 { Bubble.shared.underPointer(quiet: true) }
+    }
+}
+
+enum Memory {
+    /// Screen captures pass through tens of MB of buffers; once a translation is closed,
+    /// hand the freed pages back to the system instead of keeping them for reuse.
+    static func relieve() {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
+            malloc_zone_pressure_relief(nil, 0)
+        }
     }
 }

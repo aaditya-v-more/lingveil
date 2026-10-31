@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         if Debug.runIfRequested() { return }
+        Debug.listenIfRequested()
         StatusIcon.install(menu: makeMenu())
         registerShortcuts()
         HoverWatcher.shared.update()
@@ -14,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !UserDefaults.standard.bool(forKey: "onboarded") {
             UserDefaults.standard.set(true, forKey: "onboarded")
             SettingsWindow.show(tab: .permissions)
+            if !Capture.hasPermission { CGRequestScreenCaptureAccess() }
+            if Prefs.useAccessibility { Permissions.ensureAccessibility() }
         }
     }
 

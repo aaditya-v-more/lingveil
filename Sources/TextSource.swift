@@ -24,7 +24,7 @@ enum OCR {
     /// runs in the helper process (see OCRHelper) so the app itself stays small.
     static func items(in snap: Snapshot, fast: Bool = false) async -> [TextItem] {
         let fast = fast || !Prefs.accurateOCR
-        let found = await OCRHelper.shared.recognize(snap.image, fast: fast, minHeight: 7 * snap.scale)
+        let found = await OCRHelper.shared.recognize(snap.pixels, fast: fast, minHeight: 7 * snap.scale)
         let lines: [TextItem] = found.map { (t, b) in
             let r = CGRect(x: snap.frame.minX + b.minX * snap.frame.width, y: snap.frame.minY + b.minY * snap.frame.height,
                            width: b.width * snap.frame.width, height: b.height * snap.frame.height)
@@ -40,13 +40,56 @@ enum OCR {
         req.usesLanguageCorrection = !fast
         req.automaticallyDetectsLanguage = true
         req.minimumTextHeight = Float(minHeight) / Float(max(1, image.height))
+        imageSize = CGSize(width: image.width, height: image.height)
         try? VNImageRequestHandler(cgImage: image, options: [:]).perform([req])
-        return (req.results ?? []).compactMap { obs in
-            guard let cand = obs.topCandidates(1).first, cand.confidence > 0.3 else { return nil }
-            let t = cand.string.trimmingCharacters(in: .whitespaces)
-            return t.isEmpty ? nil : (t, obs.boundingBox)
+        var out: [(String, CGRect)] = []
+        for obs in req.results ?? [] {
+            guard let cand = obs.topCandidates(1).first, cand.confidence > 0.3 else { continue }
+            for (t, r) in split(cand, obs.boundingBox) {
+                let t = t.trimmingCharacters(in: .whitespaces)
+                if !t.isEmpty { out.append((t, r)) }
+            }
         }
+        return out
     }
+
+    /// Vision reads a row of separate labels (a menu bar, a toolbar, table cells) as one
+    /// line. Its word boxes swallow the gaps, so a word whose box is much wider than the
+    /// word itself would be at that size is taken to end a label. Only lines that are
+    /// clearly wider than their text are considered, so ordinary sentences stay whole.
+    private static func split(_ cand: VNRecognizedText, _ box: CGRect) -> [(String, CGRect)] {
+        let s = cand.string
+        let hPx = box.height * imageSize.height
+        guard s.contains(" "), hPx > 4 else { return [(s, box)] }
+        let font = NSFont.systemFont(ofSize: hPx)
+        func width(_ t: Substring) -> CGFloat { (String(t) as NSString).size(withAttributes: [.font: font]).width }
+        guard box.width * imageSize.width > width(Substring(s)) * 1.2 else { return [(s, box)] }
+        var words: [(Range<String.Index>, CGRect)] = []
+        var i = s.startIndex
+        while let start = s[i...].firstIndex(where: { $0 != " " }) {
+            let end = s[start...].firstIndex(of: " ") ?? s.endIndex
+            guard let b = (try? cand.boundingBox(for: start..<end))??.boundingBox else { return [(s, box)] }
+            words.append((start..<end, b))
+            i = end
+        }
+        guard words.count > 1 else { return [(s, box)] }
+        var parts: [(String, CGRect)] = []
+        var cur = words[0]
+        for (k, w) in words.enumerated() {
+            if k > 0 { cur = (cur.0.lowerBound..<w.0.upperBound, cur.1.union(w.1)) }
+            let excess = w.1.width * imageSize.width - width(s[w.0])
+            if excess > hPx * 1.0 || k == words.count - 1 {
+                // Trim the box back to the text so the gap stays uncovered.
+                var r = cur.1
+                r.size.width = min(r.width, width(s[cur.0]) / imageSize.width * 1.05)
+                parts.append((String(s[cur.0]), CGRect(x: r.minX, y: box.minY, width: r.width, height: box.height)))
+                if k + 1 < words.count { cur = words[k + 1]; cur.0 = cur.0.lowerBound..<cur.0.lowerBound }
+            }
+        }
+        return parts.filter { !$0.0.isEmpty }
+    }
+
+    nonisolated(unsafe) private static var imageSize = CGSize(width: 1, height: 1)
 
     /// Merges stacked lines that read as one paragraph so they are translated together.
     /// Short lines (menu items, buttons, list rows) stay separate.
