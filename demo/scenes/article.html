@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="window.css">
+<style>
+.side { width: 210px; flex: none; background: #f7f5f1; border-right: 1px solid #e8e5df; padding: 22px 14px; }
+.side h4 { font-size: 11px; color: #9a958c; font-weight: 600; margin: 0 10px 8px; }
+.side a { display: block; padding: 8px 10px; border-radius: 7px; font-size: 14px; color: #3a3833; margin-bottom: 2px; }
+.side a.on { background: #e9e3d6; font-weight: 600; }
+.side .sec { margin-top: 26px; }
+main { flex: 1; overflow: hidden; padding: 38px 64px; }
+.kicker { font-size: 13px; color: #b0562f; font-weight: 700; margin-bottom: 10px; }
+h1 { font-size: 34px; line-height: 1.3; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 12px; }
+.meta { font-size: 13px; color: #8a867e; margin-bottom: 22px; }
+.hero { height: 210px; border-radius: 14px; margin-bottom: 26px; background:
+  radial-gradient(circle at 78% 30%, #ffd9a0 0 34px, transparent 35px),
+  linear-gradient(180deg, #f6c38c 0%, #e9875a 45%, #a8443a 100%); position: relative; overflow: hidden; }
+.hero::before { content: ""; position: absolute; left: -5%; right: -5%; bottom: -30px; height: 120px; background: #5b2b31; border-radius: 50% 50% 0 0; }
+.hero::after { content: ""; position: absolute; left: 18%; bottom: 40px; width: 110px; height: 90px; background:
+  linear-gradient(#3b1d22,#3b1d22) 50% 0/130px 12px no-repeat, linear-gradient(#3b1d22,#3b1d22) 50% 26px/110px 9px no-repeat,
+  linear-gradient(#3b1d22,#3b1d22) 18px 20px/12px 70px no-repeat, linear-gradient(#3b1d22,#3b1d22) 80px 20px/12px 70px no-repeat; }
+p { font-size: 17px; line-height: 1.85; color: #2f2d29; margin-bottom: 18px; }
+h2 { font-size: 22px; font-weight: 800; margin: 30px 0 12px; }
+.tip { background: #fbf3e4; border: 1px solid #efdcb8; border-radius: 12px; padding: 16px 20px; margin: 8px 0 22px; }
+.tip b { display: block; font-size: 14px; color: #9a6418; margin-bottom: 4px; }
+.tip span { font-size: 15px; line-height: 1.7; color: #4a3b22; }
+.actions { display: flex; gap: 10px; margin: 6px 0 24px; }
+.btn { padding: 9px 18px; border-radius: 9px; font-size: 14px; font-weight: 600; background: #b0562f; color: #fff; }
+.btn.ghost { background: #efece6; color: #3a3833; }
+ul { margin: 0 0 18px 22px; } li { font-size: 16px; line-height: 1.9; color: #2f2d29; }
+</style>
+<div class="win">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">ことのは</span></div>
+  <div class="body">
+    <nav class="side">
+      <h4>ライブラリ</h4>
+      <a>ホーム</a><a class="on">旅行</a><a>料理</a><a>保存済み</a>
+      <div class="sec"><h4>アカウント</h4><a>通知</a><a>設定</a></div>
+    </nav>
+    <main>
+      <div class="kicker">旅のノート</div>
+      <h1>京都で過ごす、静かな秋の週末</h1>
+      <div class="meta">2026年10月12日・読了時間 6分</div>
+      <div class="actions"><span class="btn">保存する</span><span class="btn ghost">共有</span></div>
+      <div class="hero"></div>
+      <p>朝早く起きて、まだ人の少ない哲学の道を歩きました。川沿いの木々は少しずつ色づき始めていて、冷たい空気がとても気持ちよかったです。</p>
+      <div class="tip"><b>おすすめの時期</b><span>紅葉は11月中旬から下旬にかけて見頃を迎えます。週末は混むので、平日の朝がおすすめです。</span></div>
+      <h2>小さな喫茶店で朝ごはん</h2>
+      <p>銀閣寺の近くにある古い喫茶店に入りました。厚切りのトーストとゆで卵、そして深煎りのコーヒー。窓から見える庭がとても静かでした。</p>
+      <p>店主のおばあさんは、この店を五十年以上続けているそうです。帰り際に、近所のおすすめの散歩道を教えてくれました。</p>
+      <h2>午後は嵐山へ</h2>
+      <p>電車で嵐山へ移動して、竹林の小道を歩きました。風が吹くたびに竹の葉が揺れて、さらさらと音がします。</p>
+      <ul><li>渡月橋は夕方の光がいちばんきれいです</li><li>人力車は一区間から乗れます</li><li>帰りは嵯峨野線が便利です</li></ul>
+      <h2>旅を終えて</h2>
+      <p>有名な場所を急いで回るより、一つの町をゆっくり歩くほうが心に残ります。次は雪の季節に、もう一度来たいと思います。</p>
+    </main>
+  </div>
+</div>

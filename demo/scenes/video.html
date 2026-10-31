@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="window.css">
+<style>
+.win { background: #0b0b0d; color: #fff; }
+.bar { background: #1c1c1f; border-color: #2a2a2e; } .bar .title { color: #9a9aa2; }
+.stage { flex: 1; position: relative; overflow: hidden; background:
+  radial-gradient(ellipse at 30% 25%, rgba(255,214,150,.55), transparent 45%),
+  linear-gradient(180deg, #2c3e66 0%, #5a5e8a 40%, #c98a6a 72%, #3a2730 100%); }
+.stage::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background:
+  linear-gradient(180deg, transparent, rgba(10,8,12,.9)); }
+.hill { position: absolute; bottom: 0; left: -10%; width: 70%; height: 34%; background: #1d1620; border-radius: 50% 60% 0 0; }
+.hill.b { left: 45%; width: 75%; height: 26%; background: #2a1d26; }
+.sub { position: absolute; left: 0; right: 0; bottom: 92px; text-align: center; font-size: 30px; font-weight: 600; line-height: 1.4;
+  text-shadow: 0 2px 4px rgba(0,0,0,.9), 0 0 2px #000; }
+.ctrl { height: 54px; background: #141417; display: flex; align-items: center; gap: 16px; padding: 0 20px; font-size: 13px; color: #b9b9c2; }
+.track { flex: 1; height: 4px; border-radius: 2px; background: #3a3a40; position: relative; }
+.track::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 41%; background: #e8504a; border-radius: 2px; }
+</style>
+<div class="win">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">바람이 머무는 곳 · 3화</span></div>
+  <div class="stage"><div class="hill"></div><div class="hill b"></div><div class="sub" id="s"></div></div>
+  <div class="ctrl"><span>▶</span><span>18:24</span><div class="track"></div><span>44:10</span></div>
+</div>
+<script>document.getElementById('s').innerHTML = decodeURIComponent(location.hash.slice(1));</script>

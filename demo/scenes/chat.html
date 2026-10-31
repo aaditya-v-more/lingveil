@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="window.css">
+<style>
+.list { width: 270px; flex: none; background: #f6f7f9; border-right: 1px solid #e3e6ea; padding: 14px 10px; }
+.search { background: #e9ecf0; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #8b9199; margin-bottom: 12px; }
+.c { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 10px; }
+.c.on { background: #dfe9ff; }
+.av { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
+.c b { display: block; font-size: 14px; } .c small { font-size: 12.5px; color: #7d838b; }
+.conv { flex: 1; display: flex; flex-direction: column; background: #fff; }
+.head { padding: 14px 22px; border-bottom: 1px solid #eceef1; display: flex; gap: 12px; align-items: center; }
+.head b { font-size: 15px; display: block; } .head small { font-size: 12px; color: #2fa44f; }
+.msgs { flex: 1; padding: 20px 26px; display: flex; flex-direction: column; gap: 12px; }
+.m { max-width: 66%; padding: 10px 15px; border-radius: 18px; font-size: 15.5px; line-height: 1.45; }
+.in { background: #eef0f3; color: #1d1d1f; align-self: flex-start; border-bottom-left-radius: 6px; }
+.out { background: #2f6df6; color: #fff; align-self: flex-end; border-bottom-right-radius: 6px; }
+.day { align-self: center; font-size: 12px; color: #9aa0a8; }
+.input { margin: 0 22px 18px; border: 1px solid #e1e4e8; border-radius: 20px; padding: 11px 16px; font-size: 14.5px; color: #9aa0a8; }
+</style>
+<div class="win">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">Mensajes</span></div>
+  <div class="body">
+    <div class="list">
+      <div class="search">Buscar</div>
+      <div class="c on"><span class="av" style="background:#e0703c">L</span><div><b>Lucía Fernández</b><small>Te mando la ubicación.</small></div></div>
+      <div class="c"><span class="av" style="background:#4a8f6a">M</span><div><b>Mamá</b><small>¿Comiste algo?</small></div></div>
+      <div class="c"><span class="av" style="background:#7d5bd0">E</span><div><b>Equipo de diseño</b><small>Reunión a las diez</small></div></div>
+    </div>
+    <div class="conv">
+      <div class="head"><span class="av" style="background:#e0703c">L</span><div><b>Lucía Fernández</b><small>En línea</small></div></div>
+      <div class="msgs">
+        <div class="day">Hoy 18:42</div>
+        <div class="m in">¡Hola! ¿Ya llegaste a Madrid?</div>
+        <div class="m out">Sí, acabo de llegar al hotel. Estoy agotado del vuelo.</div>
+        <div class="m in">Descansa un poco. Esta noche vamos a cenar en un sitio increíble cerca de la Plaza Mayor.</div>
+        <div class="m out">¡Perfecto! ¿A qué hora nos vemos?</div>
+        <div class="m in">A las nueve. Te mando la ubicación.</div>
+      </div>
+      <div class="input">Escribe un mensaje</div>
+    </div>
+  </div>
+</div>

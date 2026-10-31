@@ -1,0 +1,203 @@
+<!doctype html><meta charset="utf-8">
+<!-- The demo film. render(t) draws the frame at t seconds; record.js steps through it frame by frame.
+     Every translated image is Lingveil's own output on the matching scene (see shoot.js). -->
+<style>
+:root { --ink: #0c0d14; --violet: #8b7bff; --coral: #ff8f6e; --text: #f4f2ff; --muted: #a9a6c4; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); color: var(--text);
+  font-family: -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+.aurora { position: absolute; inset: -20%; filter: blur(90px); opacity: .55; }
+.aurora i { position: absolute; border-radius: 50%; }
+.layer { position: absolute; inset: 0; opacity: 0; }
+.cap { position: absolute; top: 70px; left: 0; right: 0; text-align: center; }
+.cap h2 { font-size: 54px; font-weight: 700; letter-spacing: -0.02em; }
+.cap .keys { margin-top: 16px; display: flex; justify-content: center; gap: 10px; }
+.key { min-width: 46px; height: 46px; padding: 0 12px; border-radius: 10px; display: grid; place-items: center; font-size: 22px; font-weight: 600;
+  background: linear-gradient(#2a2b3a, #1b1c27); border: 1px solid #3a3b52; box-shadow: 0 3px 0 #0a0a10; color: #e8e6ff; }
+.key.label { background: none; border: 0; box-shadow: none; font-size: 22px; color: var(--muted); font-weight: 500; }
+.win { position: absolute; border-radius: 12px; overflow: hidden; box-shadow: 0 40px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06); }
+.win img, .win .pane { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.scan { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, var(--violet), var(--coral), transparent);
+  box-shadow: 0 0 24px 6px rgba(139,123,255,.55); }
+.sel { position: absolute; border: 2px solid #fff; border-radius: 6px; background: rgba(139,123,255,.12); box-shadow: 0 0 0 9999px rgba(8,8,14,.28); }
+.chip { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px; background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.14); font-size: 22px; font-weight: 600; }
+.pill { position: absolute; padding: 6px 14px; border-radius: 999px; font-size: 18px; font-weight: 700; background: #ff4f5e; color: #fff; letter-spacing: .06em; }
+.toast { position: absolute; padding: 14px 22px; border-radius: 14px; background: rgba(28,28,40,.92); border: 1px solid rgba(255,255,255,.12);
+  font-size: 22px; font-weight: 600; display: flex; gap: 12px; align-items: center; box-shadow: 0 20px 50px rgba(0,0,0,.5); }
+.toast b { color: #6ee7a8; }
+.note { position: absolute; width: 600px; border-radius: 14px; background: #fffdf7; color: #2b2925; box-shadow: 0 30px 70px rgba(0,0,0,.5); overflow: hidden; }
+.note .nb { height: 36px; background: #f1ede3; display: flex; align-items: center; gap: 7px; padding: 0 12px; font-size: 13px; color: #8a857a; }
+.note .nb span { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.note pre { font-family: -apple-system, "Hiragino Sans", sans-serif; white-space: pre-wrap; font-size: 19px; line-height: 1.7; padding: 22px 26px; }
+.caret { display: inline-block; width: 2px; height: 22px; background: #2f6df6; vertical-align: -4px; }
+.word { font-size: 150px; font-weight: 800; letter-spacing: -0.045em; background: linear-gradient(100deg, #fff 20%, var(--violet) 55%, var(--coral) 90%);
+  -webkit-background-clip: text; color: transparent; }
+.tiles { position: absolute; left: 260px; right: 260px; top: 300px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+.tile { height: 170px; border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); padding: 28px 30px; }
+.tile b { display: block; font-size: 30px; font-weight: 700; margin-bottom: 10px; }
+.tile span { font-size: 21px; color: var(--muted); line-height: 1.4; }
+.tile .ic { float: right; font-size: 34px; }
+</style>
+
+<div class="aurora" id="aurora">
+  <i style="width:900px;height:700px;left:5%;top:10%;background:#5a46ff"></i>
+  <i style="width:800px;height:700px;right:0;bottom:0;background:#ff7a59"></i>
+  <i style="width:600px;height:500px;left:45%;top:40%;background:#2fb7ff;opacity:.5"></i>
+</div>
+
+<!-- 0 title -->
+<div class="layer" id="title">
+  <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center">
+    <div><div class="word">Lingveil</div>
+    <div style="font-size:40px;color:var(--muted);margin-top:6px;font-weight:500" id="tag">Your screen, in your language.</div></div>
+  </div>
+</div>
+
+<!-- 1 whole screen -->
+<div class="layer" id="s1">
+  <div class="cap"><h2>Translate the whole window</h2><div class="keys"><span class="key">⌥</span><span class="key">⇧</span><span class="key">T</span></div></div>
+  <div class="win" id="w1" style="left:419px;top:250px;width:1082px;height:697px">
+    <img src="out/article.png"><img id="w1en" src="out/article-en.png"><img id="w1hi" src="out/article-hi.png" style="opacity:0">
+    <div class="scan" id="scan1"></div>
+  </div>
+  <div class="chip" id="lang1" style="position:absolute;left:50%;top:982px;transform:translateX(-50%)"><span id="lang1a">日本語 → English</span></div>
+</div>
+
+<!-- 2 scroll -->
+<div class="layer" id="s2">
+  <div class="cap"><h2>Stays translated while you scroll</h2><div class="keys"><span class="key label">Like it was written that way</span></div></div>
+  <div class="win" id="w2" style="left:419px;top:250px;width:1082px;height:697px">
+    <div class="pane" id="p2bar" style="height:37px;background:url(out/article-tall-en.png) 0 0/1082px auto no-repeat"></div>
+    <div class="pane" id="p2side" style="top:37px;width:193px;height:660px;background:url(out/article-tall-en.png) 0 -37px/1082px auto no-repeat"></div>
+    <div class="pane" id="p2main" style="top:37px;left:193px;width:889px;height:660px;background:url(out/article-tall-en.png) -193px -37px/1082px auto no-repeat"></div>
+  </div>
+</div>
+
+<!-- 3 area -->
+<div class="layer" id="s3">
+  <div class="cap"><h2>Or just the part you need</h2><div class="keys"><span class="key">⌥</span><span class="key">⇧</span><span class="key">A</span></div></div>
+  <div class="win" id="w3" style="left:430px;top:250px;width:1060px;height:675px">
+    <img src="out/chat.png"><img id="w3en" src="out/chat-en.png">
+  </div>
+  <div class="sel" id="sel3"></div>
+  <div class="chip" style="position:absolute;left:50%;top:982px;transform:translateX(-50%)">Español → English</div>
+</div>
+
+<!-- 4 live -->
+<div class="layer" id="s4">
+  <div class="cap"><h2>Live, for subtitles, chats and games</h2><div class="keys"><span class="key">⌥</span><span class="key">⇧</span><span class="key">L</span></div></div>
+  <div class="win" id="w4" style="left:430px;top:250px;width:1060px;height:597px">
+    <img id="v1" src="out/sub1.png"><img id="v2" src="out/sub2.png"><img id="v3" src="out/sub3.png">
+    <img id="v1e" src="out/sub1-en.png"><img id="v2e" src="out/sub2-en.png"><img id="v3e" src="out/sub3-en.png">
+  </div>
+  <div class="pill" id="live" style="left:1400px;top:270px">● LIVE</div>
+  <div class="chip" style="position:absolute;left:50%;top:900px;transform:translateX(-50%)">한국어 → English</div>
+</div>
+
+<!-- 5 copy -->
+<div class="layer" id="s5">
+  <div class="cap"><h2>Copy text out of anything</h2><div class="keys"><span class="key">⌥</span><span class="key">⇧</span><span class="key">C</span></div></div>
+  <div class="win" id="w5" style="left:300px;top:250px;width:1082px;height:697px"><img src="out/article.png"></div>
+  <div class="sel" id="sel5"></div>
+  <div class="toast" id="toast5" style="left:1250px;top:330px"><b>✓</b> Copied as text</div>
+  <div class="note" id="note5" style="left:1250px;top:420px"><div class="nb"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span>&nbsp; Notes</div><pre id="pre5"></pre></div>
+</div>
+
+<!-- 6 features -->
+<div class="layer" id="s6">
+  <div class="cap"><h2>Free, private when you want it, light on memory</h2></div>
+  <div class="tiles">
+    <div class="tile"><span class="ic">🌐</span><b>Google, no key</b><span>Fast and free out of the box</span></div>
+    <div class="tile"><span class="ic">🔒</span><b>On-device</b><span>Apple Translation or a local model, offline</span></div>
+    <div class="tile"><span class="ic">🔑</span><b>Your own keys</b><span>DeepL, Google Cloud, Ollama</span></div>
+    <div class="tile"><span class="ic">🔊</span><b>Read aloud</b><span>System or open-source voices</span></div>
+    <div class="tile"><span class="ic">🖱️</span><b>Under the pointer</b><span>A word, a line, a selection</span></div>
+    <div class="tile"><span class="ic">🪶</span><b>Tiny</b><span>A few tens of MB between uses</span></div>
+  </div>
+</div>
+
+<!-- 7 end -->
+<div class="layer" id="end">
+  <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center">
+    <div><div class="word" style="font-size:130px">Lingveil</div>
+    <div style="font-size:36px;color:var(--text);margin-top:10px;font-weight:600">Free for Mac and Windows</div>
+    <div style="font-size:26px;color:var(--muted);margin-top:14px">Download from GitHub Releases</div></div>
+  </div>
+</div>
+
+<script>
+const COPY = %COPY%;
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const out = x => 1 - Math.pow(1 - clamp(x), 3);
+const span = (t, a, b) => clamp((t - a) / (b - a));
+// Scene windows [start, end]; layers crossfade over 0.45 s at both ends.
+const S = { title: [0, 3.6], s1: [3.4, 11.6], s2: [11.4, 17.2], s3: [17.0, 22.8], s4: [22.6, 29.4], s5: [29.2, 35.8], s6: [35.6, 40.4], end: [40.2, 45] };
+const FADE = .45;
+function vis(t, [a, b]) { return Math.min(span(t, a, a + FADE), 1 - span(t, b - FADE, b)); }
+function setLayer(id, t) { const v = vis(t, S[id]); const el = $(id); el.style.opacity = v; el.style.display = v > 0 ? '' : 'none';
+  const c = el.querySelector('.cap'); return { v, local: t - S[id][0] }; }
+function lift(el, local) { const p = out(local / .8); el.style.transform = `translateY(${(1 - p) * 40}px) scale(${.97 + .03 * p})`; }
+function clipTop(el, p) { el.style.clipPath = `inset(0 0 ${(1 - p) * 100}% 0)`; }
+function clipRect(el, x, y, w, h, W, H) { el.style.clipPath = `inset(${y}px ${W - x - w}px ${H - y - h}px ${x}px round 6px)`; }
+
+window.render = function (t) {
+  const a = $('aurora'); a.style.transform = `rotate(${t * 2}deg) scale(${1.05 + .05 * Math.sin(t / 3)})`;
+
+  // title
+  { const { local } = setLayer('title', t); $('title').firstElementChild.style.transform = `scale(${1 + local * .015})`;
+    $('tag').style.opacity = span(local, .7, 1.4); }
+
+  // 1: Japanese article, scan reveals English, then crossfade to Hindi
+  { const { local } = setLayer('s1', t); lift($('w1'), local);
+    const p = ease(span(local, 1.4, 2.6)); clipTop($('w1en'), p);
+    const sc = $('scan1'); sc.style.top = (p * 697 - 2) + 'px'; sc.style.opacity = p > 0 && p < 1 ? 1 : 0;
+    const h = ease(span(local, 5.0, 5.8)); $('w1hi').style.opacity = h;
+    $('lang1').style.opacity = span(local, 2.4, 2.9);
+    $('lang1a').textContent = local < 5.4 ? '日本語 → English' : '日本語 → हिन्दी'; }
+
+  // 2: scroll the translated article
+  { const { local } = setLayer('s2', t);
+    const k = 1082 / 1180, tall = 1500 * k, maxScroll = tall - 697;
+    const s = ease(span(local, .6, 2.8)) * maxScroll * .62 - ease(span(local, 3.4, 4.6)) * maxScroll * .25;
+    $('p2main').style.backgroundPosition = `-193px ${-37 - s}px`; }
+
+  // 3: drag a selection over the conversation; inside it turns English
+  { const { local } = setLayer('s3', t); lift($('w3'), local);
+    const W = 1060, H = 675, x0 = 285, y0 = 105; const d = ease(span(local, 1.0, 1.9));
+    const w = 30 + d * 730, h = 20 + d * 450; const sel = $('sel3');
+    sel.style.left = (430 + x0) + 'px'; sel.style.top = (250 + y0) + 'px'; sel.style.width = w + 'px'; sel.style.height = h + 'px';
+    sel.style.opacity = span(local, .9, 1.0) * (1 - span(local, 2.5, 3.0));
+    const r = span(local, 2.05, 2.5); $('w3en').style.opacity = r > 0 ? 1 : 0; clipRect($('w3en'), x0, y0, w, h * ease(r), W, H); }
+
+  // 4: subtitles change, translation follows each one
+  { const { local } = setLayer('s4', t); lift($('w4'), local);
+    const T = [0, 2.0, 4.0]; for (let i = 0; i < 3; i++) {
+      const on = local >= T[i] && (i === 2 || local < T[i + 1]);
+      $('v' + (i + 1)).style.opacity = on ? 1 : 0;
+      $('v' + (i + 1) + 'e').style.opacity = on ? ease(span(local, T[i] + .55, T[i] + .8)) : 0; }
+    $('live').style.opacity = (0.6 + 0.4 * Math.sin(local * 6)) * span(local, .3, .6); }
+
+  // 5: select a paragraph, it lands in Notes as text
+  { const { local } = setLayer('s5', t); lift($('w5'), local);
+    const k = 1082 / 1180, x = 265 * k, y = 505 * k, W = 860 * k, H = 170 * k; const d = ease(span(local, .9, 1.8));
+    const sel = $('sel5'); sel.style.left = (300 + x) + 'px'; sel.style.top = (250 + y) + 'px';
+    sel.style.width = (20 + d * (W - 20)) + 'px'; sel.style.height = (14 + d * (H - 14)) + 'px';
+    sel.style.opacity = span(local, .8, .9) * (1 - span(local, 2.4, 2.8));
+    const w5 = $('w5'); const sh = ease(span(local, 2.2, 3.0)); w5.style.left = (300 - 160 * sh) + 'px'; sel.style.marginLeft = (-160 * sh) + 'px';
+    const to = $('toast5'); const tp = out(span(local, 2.0, 2.4)); to.style.opacity = tp * (1 - span(local, 3.4, 3.8)); to.style.transform = `translateY(${(1 - tp) * 16}px)`;
+    const n = $('note5'); const np = out(span(local, 2.6, 3.3)); n.style.opacity = np; n.style.transform = `translateX(${(1 - np) * 60}px)`;
+    $('pre5').innerHTML = COPY + (Math.floor(local * 2) % 2 ? '<span class="caret"></span>' : '<span class="caret" style="opacity:0"></span>'); }
+
+  // 6: feature tiles
+  { const { local } = setLayer('s6', t);
+    document.querySelectorAll('.tile').forEach((el, i) => { const p = out(span(local, .3 + i * .12, .9 + i * .12));
+      el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * 30}px)`; }); }
+
+  // end
+  { const { local } = setLayer('end', t); $('end').style.opacity = vis(t, S.end) * (1 - span(t, 44.2, 45)); }
+};
+render(0);
+</script>

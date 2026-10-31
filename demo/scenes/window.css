@@ -1,0 +1,9 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: transparent; }
+body { font-family: -apple-system, "Hiragino Sans", "Apple SD Gothic Neo", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+.win { width: 100vw; height: 100vh; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; background: #fff; color: #1d1d1f; }
+.bar { height: 40px; flex: none; display: flex; align-items: center; padding: 0 14px; gap: 8px; background: #f3f2f0; border-bottom: 1px solid #e2e0dc; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+.bar .title { flex: 1; text-align: center; font-size: 13px; font-weight: 600; color: #6b6965; margin-right: 52px; }
+.body { flex: 1; display: flex; min-height: 0; }
