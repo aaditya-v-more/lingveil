@@ -62,7 +62,7 @@ enum Debug {
                 let t2 = Date()
                 print(String(format: "items %d  blocks %d  ocr %.0f ms  translate+colors %.0f ms", items.count, blocks.count,
                              t1.timeIntervalSince(t0) * 1000, t2.timeIntervalSince(t1) * 1000))
-                for b in blocks { print("•", b.item.lines, Int(b.item.rect.minX), Int(b.item.rect.minY), Int(b.item.rect.width), Int(b.item.rect.height), b.item.text.prefix(40), "→", b.translation.prefix(40)) }
+                for b in blocks { print("•", String(format: "stroke %.3f L%.0f R%.0f", b.around.stroke, b.around.left, b.around.right), b.item.lines, Int(b.item.rect.minX), Int(b.item.rect.minY), Int(b.item.rect.width), Int(b.item.rect.height), b.item.text.prefix(40), "→", b.translation.prefix(40)) }
                 write(snap, blocks, to: out)
             } catch { print("error:", error.localizedDescription) }
             exit(0)
@@ -171,6 +171,7 @@ enum Debug {
         NSImage(cgImage: snap.image, size: snap.frame.size).draw(in: CGRect(origin: .zero, size: snap.frame.size))
         let v = OverlayView(frame: CGRect(origin: .zero, size: snap.frame.size))
         v.blocks = blocks
+        for (t, est, final, al) in v.debugSizes { print(String(format: "  size est %.1f final %.1f align %d  ", est ?? 0, final, al.rawValue) + t.prefix(30)) }
         v.draw(v.bounds)
         NSGraphicsContext.restoreGraphicsState()
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))

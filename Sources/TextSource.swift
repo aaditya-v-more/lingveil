@@ -9,6 +9,7 @@ struct TextItem {
     var lines: Int
     var font: NSFont?            // known only for Accessibility text
     var size: CGFloat?           // estimated point size for OCR text
+    var glyphHeight: CGFloat?    // median height of the single OCR lines a paragraph was merged from
     var align: NSTextAlignment = .left
     var fromAX = false
 
@@ -20,6 +21,12 @@ struct TextItem {
     /// language; translating them only mangles them.
     var isLiteral: Bool {
         let t = text.trimmingCharacters(in: .whitespaces)
+        if font?.isFixedPitch == true { return true }
+        // Whole lines of code or shell: operators, flags, assignments, or mostly symbols.
+        if t.range(of: #"&&|\|\||\s\|\s|^\$\s|\s--?[a-zA-Z]|\b\w+=[^\s]|[{};]\s*$|<<|>>|::|->|=>"#, options: .regularExpression) != nil { return true }
+        let visible = t.unicodeScalars.filter { !CharacterSet.whitespaces.contains($0) }
+        let symbols = visible.filter { "[]{}()<>=;:/\\|&$#*_~`'\"".unicodeScalars.contains($0) }.count
+        if visible.count >= 8, Double(symbols) / Double(visible.count) > 0.18 { return true }
         if t.contains("://") || t.hasPrefix("www.") || t.hasPrefix("/") || t.hasPrefix("~/") || t.hasPrefix("@") || t.hasPrefix("#") { return true }
         guard !t.contains(" ") else { return false }
         if t.contains("@"), t.contains(".") { return true }
@@ -57,11 +64,29 @@ enum OCR {
         for obs in req.results ?? [] {
             guard let cand = obs.topCandidates(1).first, cand.confidence > 0.3 else { continue }
             for (t, r) in split(cand, obs.boundingBox) {
-                let t = t.trimmingCharacters(in: .whitespaces)
+                let (t, r) = stripIcons(t.trimmingCharacters(in: .whitespaces), r)
                 if !t.isEmpty { out.append((t, r)) }
             }
         }
         return out
+    }
+
+    /// Toolbar and list icons next to a label come back as a stray symbol ("_ Settings",
+    /// "• Inbox"). Drop single non-alphanumeric tokens at either end and trim the box with them.
+    static func stripIcons(_ t: String, _ r: CGRect) -> (String, CGRect) {
+        var words = t.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard words.count > 1 else { return (t, r) }
+        let total = CGFloat(max(1, t.count))
+        var box = r
+        func isIcon(_ w: String) -> Bool { w.count == 1 && !w.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) } }
+        if let f = words.first, isIcon(f) {
+            let cut = box.width * CGFloat(f.count + 1) / total
+            box.origin.x += cut; box.size.width -= cut; words.removeFirst()
+        }
+        if words.count > 1, let l = words.last, isIcon(l) {
+            box.size.width -= box.width * CGFloat(l.count + 1) / total; words.removeLast()
+        }
+        return (words.joined(separator: " "), box)
     }
 
     /// Vision reads a row of separate labels (a menu bar, a toolbar, table cells) as one
@@ -112,7 +137,7 @@ enum OCR {
             used[i] = true
             var block = sorted[i]
             var last = sorted[i]
-            var lefts = [last.rect.minX], centers = [last.rect.midX]
+            var lefts = [last.rect.minX], centers = [last.rect.midX], heights = [last.rect.height]
             var j = i + 1
             while j < sorted.count {
                 if used[j] { j += 1; continue }
@@ -133,11 +158,12 @@ enum OCR {
                     block.text += joiner + n.text
                     block.rect = block.rect.union(n.rect)
                     block.lines += 1
-                    lefts.append(n.rect.minX); centers.append(n.rect.midX)
+                    lefts.append(n.rect.minX); centers.append(n.rect.midX); heights.append(n.rect.height)
                     last = n
                 }
                 j += 1
             }
+            block.glyphHeight = heights.sorted()[heights.count / 2]
             if block.lines > 1 {
                 let leftSpread = (lefts.max()! - lefts.min()!), centerSpread = (centers.max()! - centers.min()!)
                 if centerSpread < leftSpread * 0.5 { block.align = .center }

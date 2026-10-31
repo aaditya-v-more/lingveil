@@ -82,8 +82,16 @@ enum Pipeline {
                         return .success(zip(batch, translated).compactMap { item, t -> Block? in
                             let clean = t.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !clean.isEmpty, clean.caseInsensitiveCompare(item.text) != .orderedSame else { return nil }
-                            return Block(item: item, translation: caseMatched(clean, original: item.text),
-                                         palette: Palette.sample(snap.pixels, rect: snap.pixelRect(item.rect)))
+                            var item = item
+                            let palette = Palette.sample(snap.pixels, rect: snap.pixelRect(item.rect))
+                            let before = item.rect.width
+                            let around = Refine.measure(&item, in: snap, bg: palette.background, text: palette.ink)
+                            // OCR boxes are often narrower than the letters; a size estimated from the
+                            // narrow box is too small, so scale it with the measured width.
+                            if !item.fromAX, item.lines == 1, let sz = item.size, before > 0, item.rect.width > before * 1.03 {
+                                item.size = min(sz * item.rect.width / before, item.lineHeight * 1.1)
+                            }
+                            return Block(item: item, translation: caseMatched(clean, original: item.text), palette: palette, around: around)
                         })
                     } catch { return .failure(error) }
                 }
@@ -110,11 +118,14 @@ enum Pipeline {
     static func estimateSizes(_ items: [TextItem]) -> [TextItem] {
         var out = items.map { it -> TextItem in
             var it = it
-            let byHeight = it.lineHeight * (it.lines > 1 ? 0.74 : 0.8)
+            // Paragraphs: size from their single lines' glyph height, not the line pitch,
+            // which includes the app's line spacing.
+            let byHeight = (it.lines > 1 ? (it.glyphHeight ?? it.lineHeight / 1.2) : it.lineHeight) * 0.8
             var size = byHeight
-            if it.lines == 1 {
+            if it.lines == 1, it.text.count >= 4 {
+                // Width is steadier than height (which swings with ascenders and descenders).
                 let w = (it.text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 20)]).width
-                if w > 0 { size = min(max(20 * it.rect.width / w, byHeight * 0.75), byHeight * 1.15) }
+                if w > 0 { size = min(max(20 * it.rect.width / w, byHeight * 0.6), byHeight * 1.4) }
             }
             it.size = max(7, size)
             return it
