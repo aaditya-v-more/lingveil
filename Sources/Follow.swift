@@ -22,7 +22,19 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     private(set) var running = false
     private var settle: Timer?
     private var exact: [CGFloat] = [], previous: [CGFloat] = [], hidden = Set<Int>()
+    private var previousTime: Double = 0
+    private var reading = 0, stillReading = false
+    private var shownSequence = -1   // the frame the blocks on screen were read from
+    /// From setting a layer's position to it being on screen.
+    private static let predicts = ProcessInfo.processInfo.environment["LINGVEIL_NOPREDICT"] == nil
+    private static let drawDelay = (Double(ProcessInfo.processInfo.environment["LINGVEIL_LEAD_MS"] ?? "") ?? 4) / 1000
+    private var speed: CGFloat = 0   // points per second, fastest visible block
     var onBusy: ((Bool) -> Void)?
+    /// Tests only: follow one window directly (captured even when covered) instead of the
+    /// screen, with its content starting `windowTop` points below the window's top edge.
+    var testWindow: (SCWindow, windowTop: CGFloat)?
+    /// The app whose accessibility text is read (tests follow a window with none).
+    var app: () -> NSRunningApplication? = { Pipeline.frontApp }
 
     init(window: OverlayWindow, screen: NSScreen, area: CGRect) {
         self.window = window; self.screen = screen; self.area = area
@@ -32,9 +44,15 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Starts watching and returns once the first frame is in.
     func start() async {
         do {
-            let (filter, _) = try await Capture.filter(for: screen)
             let cfg = SCStreamConfiguration()
-            cfg.sourceRect = Capture.localRect(area, on: screen)
+            let filter: SCContentFilter
+            if let (w, top) = testWindow {
+                filter = SCContentFilter(desktopIndependentWindow: w)
+                cfg.sourceRect = CGRect(x: 0, y: top, width: area.width, height: area.height)
+            } else {
+                filter = try await Capture.filter(for: screen).0
+                cfg.sourceRect = Capture.localRect(area, on: screen)
+            }
             // Full resolution: the same frames are read (OCR) when text needs translating, so
             // what is translated always lines up with what is being tracked.
             cfg.width = Int(area.width) * tracker.scale; cfg.height = Int(area.height) * tracker.scale
@@ -48,7 +66,9 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             stream = s
             running = true
             for _ in 0..<40 where !tracker.hasFrame { try? await Task.sleep(for: .milliseconds(25)) }
+            dirty = true   // the first frame may have arrived before this was running
             loop = Task { await refreshLoop() }
+            prefetch()
         } catch { Debug.log("follow could not start: \(error.localizedDescription)") }
     }
 
@@ -70,9 +90,16 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             CGRect(x: b.item.rect.minX - area.minX, y: area.maxY - b.item.rect.maxY, width: b.item.rect.width, height: b.item.rect.height)
         }
         guard let catchUp = tracker.setReference(token, rects) else { return false }
-        w.view.blocks = blocks
-        exact = []; previous = []
-        if let m = catchUp { apply(m, predict: false) } else { dirty = false }
+        previous = []; previousTime = 0
+        if let m = catchUp, let sh = m.shifts {
+            // Read from an older frame: put the blocks where their text is now before they appear.
+            exact = sh.map { -CGFloat($0) }; hidden = m.hidden
+            w.view.show(blocks, shifts: exact, hidden: hidden)
+        } else {
+            exact = []; hidden = []
+            w.view.blocks = blocks
+            dirty = false
+        }
         return true
     }
 
@@ -81,7 +108,13 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
               let info = (CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
               let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
               let pb = sb.imageBuffer else { return }
-        guard let motion = tracker.frame(pb) else { return }
+        // When the frame was on screen, to work out how far things have moved since.
+        var shown = CACurrentMediaTime()
+        if let mach = info[.displayTime] as? UInt64 {
+            var tb = mach_timebase_info_data_t(); mach_timebase_info(&tb)
+            shown = Double(mach) * Double(tb.numer) / Double(tb.denom) / 1e9
+        }
+        guard let motion = tracker.frame(pb, time: shown) else { return }
         Task { @MainActor in self.changed(motion) }
     }
 
@@ -105,20 +138,27 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
         // Image rows grow downward; the view's y grows upward.
         let now = s.map { -CGFloat($0) }
         var shown = now
-        if predict, previous.count == now.count {
+        let dt = m.time - previousTime
+        var fastest: CGFloat = 0
+        if previous.count == now.count, dt > 0.004, dt < 0.1 {
+            // Each block's speed, and how old the frame is by the time this is on screen
+            // (capture and processing, plus about half a refresh until it's drawn).
+            let lead = CGFloat(min(0.06, max(0, CACurrentMediaTime() - m.time + Self.drawDelay)))
             for i in now.indices where !m.hidden.contains(i) {
-                let step = now[i] - previous[i]
-                if abs(step) > 0.5, abs(step) < 120 { shown[i] += step * 0.75 }
+                let v = (now[i] - previous[i]) / CGFloat(dt)
+                fastest = max(fastest, abs(v))
+                if predict, Self.predicts { shown[i] += max(-250, min(250, v * lead)) }
             }
         }
-        previous = now; exact = now; hidden = m.hidden
+        speed = fastest
+        previous = now; previousTime = m.time; exact = now; hidden = m.hidden
         view.move(shown, hidden: m.hidden)
         settle?.invalidate()
         if shown != now {
             settle = Timer.scheduledTimer(withTimeInterval: 0.045, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, self.running, self.exact.count == now.count else { return }
-                    self.previous = self.exact
+                    self.speed = 0
                     self.window?.view.move(self.exact, hidden: self.hidden)
                 }
             }
@@ -126,28 +166,66 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     /// Reads and translates whatever changed: soon after the screen goes still, and every
-    /// half second while it keeps moving (so text scrolled into view doesn't wait for the
+    /// quarter second while it keeps moving at a readable pace (so text scrolled into view doesn't wait for the
     /// scrolling to stop).
     private func refreshLoop() async {
         while running, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(30))
             let still = Date().timeIntervalSince(lastChange) > 0.12
-            guard dirty, still || Date().timeIntervalSince(lastRefresh) > 0.5 else { continue }
+            guard dirty else { continue }
+            if still {
+                // Once things stop, read right away, even if a read from mid-scroll is still
+                // under way (its result will be older and is dropped).
+                guard !stillReading else { continue }
+            } else {
+                // While moving, only slow scrolling is worth reading: after a flick the frame
+                // is out of date long before its text is.
+                guard reading == 0, Date().timeIntervalSince(lastRefresh) > 0.25, speed < 1500 else { continue }
+            }
             dirty = false
             lastRefresh = Date()
-            guard let token = tracker.begin(), let pixels = token.pixels else { continue }
+            guard let token = tracker.begin(), let pixels = token.pixels else { Debug.log("follow: no frame to read"); continue }
+            reading += 1
+            if still { stillReading = true }
             onBusy?(true)
-            let t0 = Date()
-            let snap = Snapshot(pixels: pixels, frame: area, scale: CGFloat(tracker.scale))
-            let app = Pipeline.frontApp
-            // Accessibility reports where text is now, which only matches the frame if the
-            // screen is still.
-            let items = await Pipeline.items(in: snap, app: app, accessibility: still)
-            let blocks = try? await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target), focus: Pipeline.frontWindowFrame(of: app))
-            onBusy?(false)
-            guard running, let blocks else { continue }
-            Debug.log(String(format: "follow refresh %d blocks in %.0f ms (%@)", blocks.count, Date().timeIntervalSince(t0) * 1000, still ? "still" : "moving"))
-            if !adopt(blocks, token) { dirty = true }
+            Task {
+                defer {
+                    reading -= 1
+                    if still { stillReading = false }
+                    onBusy?(reading > 0)
+                }
+                let t0 = Date()
+                let snap = Snapshot(pixels: pixels, frame: area, scale: CGFloat(tracker.scale))
+                let app = self.app()
+                // Accessibility reports where text is now, which only matches the frame if the
+                // screen is still.
+                let items = await Pipeline.items(in: snap, app: app, fastOCR: !still, accessibility: still)
+                let blocks: [Block]
+                do { blocks = try await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target), focus: Pipeline.frontWindowFrame(of: app)) } catch {
+                    Debug.log("follow refresh failed: \(error.localizedDescription) (\(items.count) items)")
+                    return
+                }
+                guard running, token.sequence > shownSequence else { return }
+                Debug.log(String(format: "follow refresh %d blocks in %.0f ms (%@)", blocks.count, Date().timeIntervalSince(t0) * 1000, still ? "still" : "moving"))
+                if adopt(blocks, token) { shownSequence = token.sequence } else { dirty = true }
+            }
+        }
+    }
+
+    /// Translates text just above and below the window ahead of time, where the app reports
+    /// it (web pages, documents), so it is ready the moment it scrolls into view. Skipped
+    /// for models on this Mac, where it would cost real work for text that may never be seen.
+    private func prefetch() {
+        guard ![.local, .ollama].contains(Prefs.engine), let app = app() else { return }
+        let around = area.insetBy(dx: 0, dy: -area.height * 2)
+        let target = Language.named(Prefs.target)
+        Task.detached(priority: .utility) {
+            let texts = AXText.items(app: app, within: around, budget: 1.0, beyondWindow: true)
+                .map(\.text).filter { $0.count > 3 && Translation.cached($0, to: target) == nil }
+            let todo = Array(NSOrderedSet(array: texts).array as! [String]).prefix(150)
+            guard !todo.isEmpty else { return }
+            _ = try? await Translation.translate(Array(todo), to: target)
+            Debug.log("follow prefetched \(todo.count) texts")
         }
     }
 
@@ -158,8 +236,11 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
 /// Works out, from frame to frame, where each translated block's text has gone. Runs on
 /// the capture queue; frames are kept as one byte of brightness per point.
 final class MotionTracker: @unchecked Sendable {
-    struct Token { fileprivate let changes: Int; fileprivate let luma: [UInt8]; fileprivate let w: Int; fileprivate let h: Int; let pixels: PixelBuffer? }
-    struct Motion { let reference: Int; let shifts: [Int]?; let hidden: Set<Int> }
+    struct Token {
+        var sequence: Int { changes }
+        fileprivate let changes: Int; fileprivate let luma: [UInt8]; fileprivate let w: Int; fileprivate let h: Int; let pixels: PixelBuffer? }
+    /// `time`: when the frame was on screen (CACurrentMediaTime seconds).
+    struct Motion { let reference: Int; let shifts: [Int]?; let hidden: Set<Int>; var time = CACurrentMediaTime() }
 
     private struct Box { let x0, x1, y0, y1: Int; let contrast: Float }
 
@@ -223,7 +304,7 @@ final class MotionTracker: @unchecked Sendable {
     }
 
     /// nil when the frame looks the same as the previous one.
-    func frame(_ pb: CVPixelBuffer) -> Motion? {
+    func frame(_ pb: CVPixelBuffer, time: Double) -> Motion? {
         CVPixelBufferLockBaseAddress(pb, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(pb) else { return nil }
@@ -246,8 +327,10 @@ final class MotionTracker: @unchecked Sendable {
         luma = l
         latest = pb
         changes += 1
-        guard !boxes.isEmpty else { return Motion(reference: refID, shifts: nil, hidden: []) }
-        return track(l)
+        guard !boxes.isEmpty else { return Motion(reference: refID, shifts: nil, hidden: [], time: time) }
+        var m = track(l)
+        m.time = time
+        return m
     }
 
     private func track(_ l: [UInt8]) -> Motion {
@@ -281,12 +364,28 @@ final class MotionTracker: @unchecked Sendable {
             var best = (Float.infinity, 0)
             for d in candidates.union([last[i]]) {
                 // Mostly scrolled out of view: hide it rather than guess.
-                let s = Self.sad(ref, l, w, h, b.x0, b.x1, b.y0, b.y1, d, step: 2, minRows: max(1, (b.y1 - b.y0) * 2 / 3)) / max(b.contrast, 4) * Self.near(d, last[i])
+                let s = Self.blockScore(ref, l, w, h, b, d) / max(b.contrast, 4) * Self.near(d, last[i])
                 if s < best.0 { best = (s, d) }
             }
             if best.0 < 0.35 { shifts[i] = best.1; last[i] = best.1 } else { hidden.insert(i); shifts[i] = last[i] }
         }
         return Motion(reference: refID, shifts: shifts, hidden: hidden)
+    }
+
+    /// How well a block matches at move `d`, judged in eight side-by-side pieces and
+    /// ignoring the worst ones: a scroll bar fading in, the pointer or a blinking caret over
+    /// part of a paragraph shouldn't make it look like the text went away.
+    private static func blockScore(_ a: [UInt8], _ b: [UInt8], _ w: Int, _ h: Int, _ box: Box, _ d: Int) -> Float {
+        let minRows = max(1, (box.y1 - box.y0) * 2 / 3)
+        let width = box.x1 - box.x0
+        let pieces = max(1, min(8, width / 24))
+        var scores: [Float] = []
+        for k in 0..<pieces {
+            let x0 = box.x0 + k * width / pieces, x1 = box.x0 + (k + 1) * width / pieces
+            scores.append(sad(a, b, w, h, x0, x1, box.y0, box.y1, d, step: 2, minRows: minRows))
+        }
+        scores.sort()
+        return scores[min(scores.count - 1, scores.count * 6 / 10)]
     }
 
     private static func near(_ d: Int, _ last: Int) -> Float { 1 + Float(abs(d - last)) / 300 }

@@ -229,16 +229,30 @@ Windows:
   to the app. It ends with the shortcut again, the ✕ on a small bar at the bottom
   ("Translated to <language>", spinner while re-reading), or another app coming forward.
   Moving or resizing the window starts over on its new frame; closing it ends.
-- Motion: a capture stream of the area at 1 px per point, up to 30 fps, delivering only
-  changed frames (same 64×64 fingerprint as Live). Per frame: brightness image; per vertical
-  band (4) find the vertical move against the reference frame (8× smaller copy, search ±70%
-  of the height, then refine ±8 px on the full image); each block then takes whichever of
-  those moves, 0 or its previous move matches its own pixels best (mean difference ÷ the
-  block's contrast < 0.35, times 1 + |move − previous move| / 300 so repeated text doesn't
-  jump). No match → hide the block (original shows) until re-read.
-- When nothing has changed for 0.3 s (and at most every 0.8 s) re-capture and translate
-  again (cache makes known text instant). Results are only used if no frame changed while
-  reading; otherwise read again.
+- Drawing: each block is painted once into its own layer; following only moves layers
+  (no relayout). A re-read keeps the layer of any block with the same translation at the
+  same spot (no flicker); new blocks fade in over 0.12 s, blocks whose text left fade out.
+- Motion: a capture stream of the followed area at full resolution, up to 60 fps,
+  delivering only changed frames (same 64×64 fingerprint as Live). Per frame: brightness at
+  one sample per point; per vertical band (4) find the vertical move against the reference
+  frame (8× smaller copy, search ±70% of the height, then refine ±8 px), each scored ×
+  (1 + |move − previous move| / 300) so repeated text doesn't jump. Each block then takes
+  whichever of those moves, 0 or its previous move matches its own pixels best, judged in
+  up to 8 side-by-side pieces using the 60th-percentile piece (a scroll bar, pointer or
+  caret over part of it doesn't count), mean difference ÷ block contrast < 0.35. No match
+  → hide it until re-read.
+- Shown position = measured + speed × (frame age + 4 ms), speed from the last two frames'
+  display times; when frames stop for 45 ms, settle on the measured position.
+- Re-reading uses the tracked frames themselves (so text and positions come from the same
+  moment): 0.12 s after things stop (accurate OCR plus accessibility), and every 0.25 s
+  while scrolling slower than 1500 pt/s (fast OCR, no accessibility, since accessibility
+  reports positions as of now). A still re-read starts even if a moving one is in flight;
+  results older than what is shown are dropped. Blocks read from an older frame are moved
+  to where their text is now before they appear.
+- Ahead of time: text the app reports beyond the window (web pages, documents), up to two
+  window heights above and below, is translated into the cache when following starts
+  (not for models running on the device).
+- Measured with `harness` (debug) + `bench/follow.py`; see bench/BENCHMARKS.md.
 
 ### 2.13 Web pages (toggle "Translate web pages by paragraph", default on)
 - Applies to text inside any web area (every browser, and web-based apps), detected from

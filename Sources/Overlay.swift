@@ -44,7 +44,19 @@ final class OverlayWindow: NSPanel {
 }
 
 final class OverlayView: NSView {
-    var blocks: [Block] = [] { didSet { prepare(); hovered = nil; shifts = []; gone = []; rebuildLayers(); redraw() } }
+    var blocks: [Block] = [] {
+        didSet {
+            prepare(); hovered = nil
+            shifts = pending?.0 ?? []; gone = pending?.1 ?? []; pending = nil
+            rebuildLayers(); redraw(); onMove?()
+        }
+    }
+    private var pending: ([CGFloat], Set<Int>)?
+    /// Shows blocks already moved to where their text is now (read from an older frame).
+    func show(_ b: [Block], shifts s: [CGFloat], hidden h: Set<Int>) {
+        pending = (s, h)
+        blocks = b
+    }
     /// While following the app (see Follower): how far each block's text has moved since it
     /// was laid out (points, up is positive), and blocks whose text isn't there any more.
     private var shifts: [CGFloat] = []
@@ -65,6 +77,15 @@ final class OverlayView: NSView {
             CATransaction.commit()
         }
         if highlight != nil { decor.needsDisplay = true }
+        onMove?()
+    }
+    /// Tests: called after blocks move or are replaced.
+    var onMove: (() -> Void)?
+    /// Tests: each visible block's original text and its top edge as shown now (points from
+    /// the top of the view).
+    var debugPositions: [(String, CGFloat, CGFloat)] {
+        blocks.indices.filter { !dropped.contains($0) && !gone.contains($0) }
+            .map { (blocks[$0].item.text, bounds.height - (baseRects[$0].maxY + shift($0)), baseRects[$0].height) }
     }
 
     // Each block is its own GPU layer, painted once; scrolling only moves layers.
@@ -109,24 +130,33 @@ final class OverlayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for i in laid.indices where !dropped.contains(i) {
-            let f = paintFrame(i)
+            let f = paintFrame(i).offsetBy(dx: 0, dy: shift(i))
             let k = key(blocks[i].translation, f)
             let l: CALayer
+            let hide = gone.contains(i)
             if let reused = old.removeValue(forKey: k) {
                 l = reused
                 l.frame = f
-                if l.opacity < 1 { fade(l, to: 1) }
+                if hide { l.opacity = 0 } else if l.opacity < 1 { fade(l, to: 1) }
+            } else if hide {
+                l = CALayer()
+                l.actions = ["position": NSNull(), "bounds": NSNull(), "frame": NSNull(), "contents": NSNull()]
+                l.frame = f
+                l.contentsScale = scale
+                l.contents = image(i, in: paintFrame(i)).layerContents(forContentsScale: scale)
+                l.opacity = 0
+                host.layer?.addSublayer(l)
             } else {
                 l = CALayer()
                 l.actions = ["position": NSNull(), "bounds": NSNull(), "frame": NSNull(), "contents": NSNull()]
                 l.frame = f
                 l.contentsScale = scale
-                l.contents = image(i, in: f).layerContents(forContentsScale: scale)
+                l.contents = image(i, in: paintFrame(i)).layerContents(forContentsScale: scale)
                 host.layer?.addSublayer(l)
                 l.opacity = 0
                 fade(l, to: 1)
             }
-            next[i] = l; base[i] = f.minY; keys[i] = k
+            next[i] = l; base[i] = f.minY - shift(i); keys[i] = k
         }
         for l in old.values {
             fade(l, to: 0)

@@ -191,7 +191,9 @@ enum AXText {
 
     private static var enabledPIDs = Set<pid_t>()
 
-    static func items(app: NSRunningApplication, within region: CGRect, budget: TimeInterval = 0.35) -> [TextItem] {
+    /// `beyondWindow`: also text scrolled out of the window (web pages and text views keep
+    /// it in their tree), to translate ahead of time.
+    static func items(app: NSRunningApplication, within region: CGRect, budget: TimeInterval = 0.35, beyondWindow: Bool = false) -> [TextItem] {
         guard trusted else { return [] }
         let pid = app.processIdentifier
         let root = AXUIElementCreateApplication(pid)
@@ -208,7 +210,7 @@ enum AXText {
         let windows: [AXUIElement] = attr(root, kAXWindowsAttribute) ?? []
         for w in windows {
             guard let wf = frame(w), wf.intersects(region) else { continue }
-            walk(w, clip: wf.intersection(region), depth: 0, deadline: deadline, block: nil, visited: &visited, out: &out)
+            walk(w, clip: beyondWindow ? region : wf.intersection(region), depth: 0, deadline: deadline, block: nil, visited: &visited, out: &out)
         }
         return Prefs.webOptimize ? joinInlineRuns(out) : out
     }

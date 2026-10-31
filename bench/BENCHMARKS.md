@@ -55,6 +55,23 @@ A full text-heavy screen (about 100 blocks, mostly long English paragraphs, into
 takes about 30 s with Index-Translate 2B on this Mac, painted progressively starting with
 the front window; Google does the same screen in under a second.
 
+## Staying on the text while scrolling
+
+The debug action `harness` opens a test window behind all others that scrolls itself
+(slow scroll, a fast flick, scrolling back) and logs where every line really is; Lingveil
+follows it with an invisible overlay and logs where it shows each translated block.
+`python3 bench/follow.py <debug dir>` compares them. A 760×620 pt window of README/SPEC
+text, Google, Apple silicon, several runs:
+
+| | Typical | 90% of samples |
+|---|---|---|
+| Position error while still | 0.3–1 pt | 2–4 pt |
+| Position error while scrolling (up to ~1300 pt/s) | 2–3 pt | 7–17 pt |
+| New text translated after it scrolls into view | 0.9–1.6 s | 1.4–2 s |
+
+During a flick (~8000 pt/s) blocks are hidden until the window settles. Text seen before
+comes back instantly from the translation cache.
+
 ## Read-aloud voices
 
 `bench/voices.py` speaks the six sentences in `bench/speak/<lang>.txt` with each voice,

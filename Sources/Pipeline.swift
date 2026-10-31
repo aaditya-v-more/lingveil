@@ -166,8 +166,11 @@ enum Pipeline {
         guard let pid = app?.processIdentifier,
               let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return nil }
+        // The frontmost window that is a real window: in full screen the title bar is a
+        // separate thin window listed first, so skip anything too small to be the content.
         for w in list where (w[kCGWindowOwnerPID as String] as? pid_t) == pid && (w[kCGWindowLayer as String] as? Int) == 0 {
-            if let b = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b as CFDictionary) {
+            if let b = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b as CFDictionary),
+               r.width >= 120, r.height >= 120 {
                 return Coords.fromQuartz(r)
             }
         }

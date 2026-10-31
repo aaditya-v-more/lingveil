@@ -169,6 +169,19 @@ enum Debug {
                     }
                     return
                 }
+                if name == "fullscreen", parts.count > 2,
+                   let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == parts[1] }) {
+                    // Puts the app's front window in (or out of) full screen: its own Space, so
+                    // tests don't touch what the person at the Mac is doing.
+                    let root = AXUIElementCreateApplication(app.processIdentifier)
+                    var w: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(root, kAXMainWindowAttribute as CFString, &w) == .success, let w {
+                        let err = AXUIElementSetAttributeValue(w as! AXUIElement, "AXFullScreen" as CFString, (parts[2] == "1") as CFBoolean)
+                        Debug.log("fullscreen \(parts[1]) \(parts[2]) -> \(err.rawValue)")
+                    }
+                    return
+                }
+                if name == "harness" { Harness.start(log: dir + "/follow.log"); return }
                 if name == "axprobe" {
                     // Which on-screen text in the front app could be rewritten through
                     // accessibility: counts per role, settable or not, and a no-op write test.
