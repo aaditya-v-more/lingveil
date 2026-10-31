@@ -111,7 +111,7 @@ enum OverlayStyle: String, CaseIterable, Identifiable {
 }
 
 enum Action: String, CaseIterable {
-    case screen, area, live, cursor, selection, read, translateRead
+    case screen, area, live, cursor, selection, read, translateRead, copyText
     var title: String {
         switch self {
         case .screen: "Translate Screen"
@@ -121,6 +121,7 @@ enum Action: String, CaseIterable {
         case .selection: "Translate Selected Text"
         case .read: "Read Aloud"
         case .translateRead: "Translate and Read Aloud"
+        case .copyText: "Copy Text from Area…"
         }
     }
     var defaultShortcut: Shortcut? {
@@ -133,6 +134,7 @@ enum Action: String, CaseIterable {
         case .selection: return Shortcut(key: UInt32(kVK_ANSI_S), mods: m)
         case .read: return Shortcut(key: UInt32(kVK_ANSI_R), mods: m)
         case .translateRead: return Shortcut(key: UInt32(kVK_ANSI_E), mods: m)
+        case .copyText: return Shortcut(key: UInt32(kVK_ANSI_C), mods: m)
         }
     }
 }

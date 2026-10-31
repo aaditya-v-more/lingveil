@@ -67,10 +67,30 @@ text, Google, Apple silicon, several runs:
 |---|---|---|
 | Position error while still | 0.3–1 pt | 2–4 pt |
 | Position error while scrolling (up to ~1300 pt/s) | 2–3 pt | 7–17 pt |
-| New text translated after it scrolls into view | 0.9–1.6 s | 1.4–2 s |
+| New text translated after it scrolls into view | 1.2–1.5 s | 2.5–2.9 s |
+| Text scrolled back into view shown again | 15–170 ms | 1–1.5 s |
 
+Reading only the strips that are new takes 35–250 ms instead of 300–1000 ms for the window;
+most of the wait for new text is now the translation request itself (120–600 ms to Google).
 During a flick (~8000 pt/s) blocks are hidden until the window settles. Text seen before
 comes back instantly from the translation cache.
+
+## Text recognition on screen text
+
+`bench/ocr/ocrbench.swift <text> [width height font]` renders text like a Retina window and
+times each recognizer macOS has, with character error rate against the real text
+(760×590 pt, Apple silicon, best of 3):
+
+| | English 14 pt | English 12 pt | English 11 pt | Japanese 14 pt | Hindi 14 pt |
+|---|---|---|---|---|---|
+| Vision accurate (used) | 160 ms, 7.8%* | 400–610 ms, 1.4% | 660 ms, 3.5% | 1.6–2.7 s, 3.0% | 540 ms, 0.0% |
+| Vision accurate, language given | 145 ms | 435 ms, 2.4% | 470 ms, 4.1% | | |
+| Vision fast | 30 ms, 3.8% | 60–110 ms, 5.8% | 130 ms, 6.7% | 100% (can't) | 99% (can't) |
+| Live Text (VisionKit) | 270 ms, 7.7% | | | 1.2 s, 3.0% | 300 ms, 0.0% |
+| 2–6 tiles in parallel | slower | | | no gain | |
+
+\* differences from line order in the markdown sample, not misread letters.
+Recognition cost grows with the area read, so reading only what's new is the speed-up.
 
 ## Read-aloud voices
 

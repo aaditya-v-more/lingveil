@@ -83,7 +83,7 @@ final class OneShot {
                 guard !Task.isCancelled, window === w else { return }
                 slow.cancel()
                 w.view.status = nil
-                if let f, let token, f.adopt(blocks, token) {} else {
+                if let f, let token, f.adopt(blocks, known: Follower.untranslated(items, blocks).map { f.localRect($0) }, token) {} else {
                     w.view.blocks = blocks
                     f?.refreshWhenStill()   // the screen moved while it was being read
                 }

@@ -44,6 +44,8 @@ struct TutorialView: View {
              text: "Translates the front window (or the selection) and reads the translation aloud.", keys: [.translateRead]),
         Page(icon: "cursorarrow.rays", title: "Just one bit",
              text: "Point at a paragraph or select text to get a small card with the translation, a copy button and a speaker.", keys: [.cursor, .selection]),
+        Page(icon: "text.viewfinder", title: "Copy text from anything",
+             text: "Drag over any part of the screen (a picture, a video, a dialog that won't let you select) and its text is on the clipboard, ready to paste.", keys: [.copyText]),
         Page(icon: "play.rectangle", title: "Keep it translated",
              text: "Live mode keeps an area translated while it changes: subtitles, chats, games.", keys: [.live]),
         Page(icon: "cpu", title: "Offline and private",

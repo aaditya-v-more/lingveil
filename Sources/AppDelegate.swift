@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .selection: Bubble.shared.selection()
         case .read: ReadAloud.read()
         case .translateRead: ReadAloud.translateAndRead()
+        case .copyText: CopyText.area()
         }
     }
 

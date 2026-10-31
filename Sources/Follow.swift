@@ -1,4 +1,5 @@
 import AppKit
+import NaturalLanguage
 import ScreenCaptureKit
 
 /// Keeps a translation in the app while you scroll, click and type, the way a Pixel phone
@@ -25,6 +26,20 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     private var previousTime: Double = 0
     private var reading = 0, stillReading = false
     private var shownSequence = -1   // the frame the blocks on screen were read from
+    /// What is being followed: the translated blocks, then areas already read that need no
+    /// translation (code, numbers, images without text), all as of the current reference.
+    private var blocks: [Block] = []
+    private var known: [CGRect] = []          // top-down points within the area
+    /// What each followed block's original text looked like (from the frame it was read
+    /// in), and blocks that scrolled away, kept with that picture. When text scrolls back
+    /// into view and looks the same, its block comes back at once: no reading, no translating.
+    private struct Look { let pixels: [UInt8]; let w: Int; let h: Int; let rect: CGRect; let rows: [Float]; let contrast: Float }
+    private var looks: [Look?] = []
+    private var memory: [(block: Block, look: Look)] = []
+    private var lastFullRead = Date()
+    private var lastRecall = Date.distantPast
+    private var recalling = false
+    private var partialSinceFull = false
     /// From setting a layer's position to it being on screen.
     private static let predicts = ProcessInfo.processInfo.environment["LINGVEIL_NOPREDICT"] == nil
     private static let drawDelay = (Double(ProcessInfo.processInfo.environment["LINGVEIL_LEAD_MS"] ?? "") ?? 4) / 1000
@@ -84,16 +99,26 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Shows `blocks`, read from the frame `token` was taken at. If the screen has moved
     /// since, they are moved to where their text is now before they appear.
     @discardableResult
-    func adopt(_ blocks: [Block], _ token: MotionTracker.Token) -> Bool {
+    func adopt(_ blocks: [Block], known: [CGRect] = [], _ token: MotionTracker.Token) -> Bool {
         guard running, let w = window else { return false }
-        let rects = blocks.map { b in
-            CGRect(x: b.item.rect.minX - area.minX, y: area.maxY - b.item.rect.maxY, width: b.item.rect.width, height: b.item.rect.height)
+        let rects = blocks.map { local($0.item.rect) }
+        guard let catchUp = tracker.setReference(token, rects + known) else { return false }
+        // Blocks that are going away keep their look, to come back if their text does.
+        let staying = Set(blocks.map(\.item.text))
+        for (i, b) in self.blocks.enumerated() where !staying.contains(b.item.text) {
+            if i < looks.count, let l = looks[i] {
+                memory.removeAll { $0.block.item.text == b.item.text }
+                memory.append((b, l))
+            }
         }
-        guard let catchUp = tracker.setReference(token, rects) else { return false }
+        if memory.count > 300 { memory.removeFirst(memory.count - 300) }
+        looks = rects.map { look(token, $0) }
+        self.blocks = blocks; self.known = known
+        if languages == nil, !blocks.isEmpty { learnLanguages(blocks.map(\.item)) }
         previous = []; previousTime = 0
         if let m = catchUp, let sh = m.shifts {
             // Read from an older frame: put the blocks where their text is now before they appear.
-            exact = sh.map { -CGFloat($0) }; hidden = m.hidden
+            exact = sh.prefix(blocks.count).map { -CGFloat($0) }; hidden = m.hidden.filter { $0 < blocks.count }
             w.view.show(blocks, shifts: exact, hidden: hidden)
         } else {
             exact = []; hidden = []
@@ -101,6 +126,149 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             dirty = false
         }
         return true
+    }
+
+    /// A block's pixels in frame `token` (top-down points), if it's wholly in view.
+    private func look(_ token: MotionTracker.Token, _ r: CGRect) -> Look? {
+        let x0 = Int(r.minX.rounded()), y0 = Int(r.minY.rounded()), w = Int(r.width.rounded()), h = Int(r.height.rounded())
+        guard x0 >= 0, y0 >= 0, w >= 8, h >= 6, x0 + w < token.w, y0 + h <= token.h else { return nil }
+        var px = [UInt8](repeating: 0, count: w * h)
+        token.luma.withUnsafeBufferPointer { l in
+            for y in 0..<h { for x in 0..<w { px[y * w + x] = l[(y0 + y) * token.w + x0 + x] } }
+        }
+        let rows = (0..<h).map { y in Float((0..<(w - 1)).reduce(0) { $0 + abs(Int(px[y * w + $1 + 1]) - Int(px[y * w + $1])) }) }
+        let mean = px.reduce(0) { $0 + Int($1) } / px.count
+        let contrast = Float(px.reduce(0) { $0 + abs(Int($1) - mean) }) / Float(px.count)
+        guard contrast > 3 else { return nil }
+        return Look(pixels: px, w: w, h: h, rect: CGRect(x: x0, y: y0, width: w, height: h), rows: rows, contrast: contrast)
+    }
+
+    /// Remembered blocks whose text is back in view inside `strips` of frame `token`,
+    /// placed where it is now. Each is found by sliding its picture up and down over the
+    /// strip (same left edge: scrolling is vertical) and must match closely.
+    nonisolated private static func recall(_ strips: [CGRect], _ token: MotionTracker.Token, _ memory: [(block: Block, look: Look)], area: CGRect) -> [(Int, Block)] {
+        func global(_ r: CGRect) -> CGRect { CGRect(x: area.minX + r.minX, y: area.maxY - r.maxY, width: r.width, height: r.height) }
+        var found: [(Int, Block)] = []
+        var rowCache: [Int: Float] = [:]
+        let lw = token.w
+        token.luma.withUnsafeBufferPointer { l in
+            for (k, m) in memory.enumerated().reversed() {
+                let lk = m.look
+                guard let strip = strips.first(where: { $0.minX <= lk.rect.minX + 4 && $0.maxX >= lk.rect.maxX - 4 }) else { continue }
+                let lo = max(0, Int(strip.minY) - lk.h / 3), hi = min(token.h - lk.h, Int(strip.maxY) - lk.h * 2 / 3)
+                guard lo <= hi else { continue }
+                let x0 = Int(lk.rect.minX)
+                func rowEnergy(_ y: Int) -> Float {
+                    let key = y &* 100_003 &+ x0 &* 7 &+ lk.w
+                    if let v = rowCache[key] { return v }
+                    var e = 0
+                    for x in x0..<(x0 + lk.w - 1) { e += abs(Int(l[y * lw + x + 1]) - Int(l[y * lw + x])) }
+                    rowCache[key] = Float(e)
+                    return Float(e)
+                }
+                // Cheap first pass on row profiles, then the picture itself at the best spots.
+                let energy = max(1, lk.rows.reduce(0, +))
+                var cands: [(Float, Int)] = []
+                for y in lo...hi {
+                    var d: Float = 0
+                    for r in 0..<lk.h { d += abs(lk.rows[r] - rowEnergy(y + r)) }
+                    cands.append((d / energy, y))
+                }
+                cands.sort { $0.0 < $1.0 }
+                for (pd, y) in cands.prefix(3) where pd < 0.25 {
+                    var diff = 0, n = 0
+                    for r in 0..<lk.h {
+                        var x = 0
+                        while x < lk.w { diff += abs(Int(lk.pixels[r * lk.w + x]) - Int(l[(y + r) * lw + x0 + x])); n += 1; x += 2 }
+                    }
+                    if Float(diff) / Float(max(1, n)) / max(lk.contrast, 4) < 0.15 {
+                        var b = m.block
+                        b.item.rect = global(CGRect(x: lk.rect.minX, y: CGFloat(y), width: lk.rect.width, height: lk.rect.height))
+                        found.append((k, b))
+                        break
+                    }
+                }
+            }
+        }
+        return found
+    }
+
+    /// What is followed now, moved to where it is in frame `token`.
+    private func carried(_ token: MotionTracker.Token) -> ([Block], [CGRect]) {
+        var kept: [Block] = [], keptKnown: [CGRect] = []
+        for (i, b) in blocks.enumerated() where i < token.shifts.count && !token.hidden.contains(i) {
+            var moved = b
+            moved.item.rect.origin.y -= CGFloat(token.shifts[i])
+            kept.append(moved)
+        }
+        for (k, r) in known.enumerated() where blocks.count + k < token.shifts.count && !token.hidden.contains(blocks.count + k) {
+            keptKnown.append(r.offsetBy(dx: 0, dy: CGFloat(token.shifts[blocks.count + k])))
+        }
+        return (kept, keptKnown)
+    }
+
+    /// Global AppKit rect -> top-down points within the area, and back.
+    func localRect(_ r: CGRect) -> CGRect { local(r) }
+    private func local(_ r: CGRect) -> CGRect { CGRect(x: r.minX - area.minX, y: area.maxY - r.maxY, width: r.width, height: r.height) }
+    private func global(_ r: CGRect) -> CGRect { CGRect(x: area.minX + r.minX, y: area.maxY - r.maxY, width: r.width, height: r.height) }
+
+    /// Areas of `items` that were read but produced no block (left as is): followed too, so
+    /// they aren't read again.
+    static func untranslated(_ items: [TextItem], _ blocks: [Block]) -> [CGRect] {
+        items.filter { it in
+            let a = it.rect.width * it.rect.height
+            return !blocks.contains { b in let o = b.item.rect.intersection(it.rect); return !o.isNull && o.width * o.height > a * 0.7 }
+        }.map(\.rect)
+    }
+
+    /// The page's languages, learned from the first full read, so later reads can tell the
+    /// recognizer instead of making it work them out.
+    private var languages: [String]?
+    private func learnLanguages(_ items: [TextItem]) {
+        let r = NLLanguageRecognizer()
+        r.processString(items.map(\.text).joined(separator: "\n"))
+        var langs = r.languageHypotheses(withMaximum: 3).filter { $0.value > 0.15 }.sorted { $0.value > $1.value }.map(\.key.rawValue)
+        if !langs.contains("en") { langs.append("en") }   // UI words, names, code
+        languages = langs
+    }
+
+    /// Reads several strips of `snap` (top-down points) in one go: stacked into one image,
+    /// since each separate request has a fixed cost.
+    private func read(_ strips: [CGRect], in snap: Snapshot) async -> [TextItem] {
+        let s = snap.scale, gap = 24
+        let px = strips.map { r in CGRect(x: r.minX * s, y: r.minY * s, width: r.width * s, height: r.height * s).integral
+            .intersection(CGRect(x: 0, y: 0, width: snap.pixels.width, height: snap.pixels.height)) }.filter { $0.width >= 8 && $0.height >= 8 }
+        guard !px.isEmpty, let W = px.map({ Int($0.width) }).max() else { return [] }
+        let H = px.reduce(0) { $0 + Int($1.height) } + gap * (px.count - 1)
+        guard let out = PixelBuffer(width: W, height: H) else { return [] }
+        var offsets: [Int] = []
+        var y = 0
+        for (k, r) in px.enumerated() {
+            offsets.append(y)
+            let rw = Int(r.width)
+            for row in 0..<Int(r.height) {
+                let dst = out.base + (y + row) * out.bytesPerRow
+                memcpy(dst, snap.pixels.base + (Int(r.minY) + row) * snap.pixels.bytesPerRow + Int(r.minX) * 4, rw * 4)
+                // Pad to the full width with the row's last pixel (blends in, adds no edges).
+                for x in rw..<W { memcpy(dst + x * 4, dst + (rw - 1) * 4, 4) }
+            }
+            y += Int(r.height)
+            if k < px.count - 1 {
+                for row in 0..<gap { memcpy(out.base + (y + row) * out.bytesPerRow, out.base + (y - 1) * out.bytesPerRow, out.bytesPerRow) }
+                y += gap
+            }
+        }
+        let found = await OCRHelper.shared.recognize(out, fast: false, minHeight: 7 * s, languages: languages)
+        var lines: [TextItem] = []
+        for (t, b) in found {
+            // Normalized, bottom-left origin -> pixels from the top of the stack.
+            let top = (1 - b.maxY) * CGFloat(H), cy = (1 - b.midY) * CGFloat(H)
+            guard let k = offsets.indices.last(where: { CGFloat(offsets[$0]) <= cy }), cy < CGFloat(offsets[k]) + px[k].height else { continue }
+            let r = CGRect(x: (px[k].minX + b.minX * CGFloat(W)) / s, y: (px[k].minY + top - CGFloat(offsets[k])) / s,
+                           width: b.width * CGFloat(W) / s, height: b.height * CGFloat(H) / s)
+            lines.append(TextItem(text: t, rect: global(r), lines: 1))
+        }
+        return Pipeline.estimateSizes(OCR.paragraphs(lines))
     }
 
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -134,9 +302,12 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     /// put a little further along their way (the last frame's move); when frames stop
     /// coming, they settle on the measured spot.
     private func apply(_ m: MotionTracker.Motion, predict: Bool) {
-        guard let s = m.shifts, let view = window?.view else { return }
-        // Image rows grow downward; the view's y grows upward.
+        guard let all = m.shifts, let view = window?.view else { return }
+        // Image rows grow downward; the view's y grows upward. Known areas come after the
+        // blocks and aren't shown.
+        let s = all.prefix(blocks.count)
         let now = s.map { -CGFloat($0) }
+        let m = MotionTracker.Motion(reference: m.reference, shifts: Array(s), hidden: m.hidden.filter { $0 < blocks.count }, time: m.time)
         var shown = now
         let dt = m.time - previousTime
         var fastest: CGFloat = 0
@@ -165,14 +336,43 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    /// Reads and translates whatever changed: soon after the screen goes still, and every
-    /// quarter second while it keeps moving at a readable pace (so text scrolled into view doesn't wait for the
-    /// scrolling to stop).
+    /// Reads and translates whatever is new. Only the parts of the frame that aren't
+    /// already followed are read: text scrolled into view, text that changed. That is
+    /// a strip or two while scrolling, so reading takes tens of milliseconds instead of the
+    /// whole window's hundreds. Reads happen every quarter second while scrolling at a
+    /// readable pace and as soon as things stop; once things have been still for a second,
+    /// the whole window is read once more with accessibility (exact text and fonts).
     private func refreshLoop() async {
         while running, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(30))
-            let still = Date().timeIntervalSince(lastChange) > 0.12
-            guard dirty else { continue }
+            let stillFor = Date().timeIntervalSince(lastChange)
+            let still = stillFor > 0.12
+            let polish = !dirty && partialSinceFull && stillFor > 1.0 && Date().timeIntervalSince(lastFullRead) > 1.0
+            guard dirty || polish else { continue }
+            // Text coming back into view that was translated before: put it back right away,
+            // at any scrolling speed. Whatever is still unread after that is read below.
+            if dirty, !polish, !recalling, !memory.isEmpty, shownSequence >= 0, speed < 1500, Date().timeIntervalSince(lastRecall) > 0.08,
+               let token = tracker.begin(), token.reference == tracker.referenceID {
+                lastRecall = Date()
+                recalling = true
+                let strips = unread(token, edges: true), mem = memory
+                // Matching runs off the main thread so following never stalls.
+                Task.detached(priority: .userInitiated) { [area] in
+                    let back = Self.recall(strips, token, mem, area: area)
+                    await MainActor.run {
+                        self.recalling = false
+                        guard !back.isEmpty, self.running, token.reference == self.tracker.referenceID, token.sequence > self.shownSequence else { return }
+                        let (kept, keptKnown) = self.carried(token)
+                        let ids = Set(back.map(\.0))
+                        self.memory = self.memory.enumerated().filter { !ids.contains($0.offset) || $0.offset >= mem.count }.map(\.element)
+                        if self.adopt(kept + back.map(\.1), known: keptKnown, token) {
+                            self.shownSequence = token.sequence
+                            self.dirty = true   // read whatever is still unread
+                            Debug.log("follow recalled \(back.count) blocks")
+                        }
+                    }
+                }
+            }
             if still {
                 // Once things stop, read right away, even if a read from mid-scroll is still
                 // under way (its result will be older and is dropped).
@@ -185,6 +385,16 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             dirty = false
             lastRefresh = Date()
             guard let token = tracker.begin(), let pixels = token.pixels else { Debug.log("follow: no frame to read"); continue }
+            let snap = Snapshot(pixels: pixels, frame: area, scale: CGFloat(tracker.scale))
+            // Read only what's new, unless nothing is followed yet, it's time for the full
+            // read, or most of the window is new anyway.
+            var strips: [CGRect]? = nil
+            if !polish, shownSequence >= 0, token.reference == tracker.referenceID {
+                strips = unread(token, edges: !still)
+                if let st = strips, st.reduce(0, { $0 + $1.width * $1.height }) > area.width * area.height * 0.6 { strips = nil }
+            }
+            if strips?.isEmpty == true { continue }   // everything in view is already followed
+            let full = strips == nil
             reading += 1
             if still { stillReading = true }
             onBusy?(true)
@@ -195,21 +405,109 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
                     onBusy?(reading > 0)
                 }
                 let t0 = Date()
-                let snap = Snapshot(pixels: pixels, frame: area, scale: CGFloat(tracker.scale))
                 let app = self.app()
-                // Accessibility reports where text is now, which only matches the frame if the
-                // screen is still.
-                let items = await Pipeline.items(in: snap, app: app, fastOCR: !still, accessibility: still)
-                let blocks: [Block]
-                do { blocks = try await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target), focus: Pipeline.frontWindowFrame(of: app)) } catch {
+                let target = Language.named(Prefs.target)
+                var items: [TextItem] = []
+                if let strips {
+                    items = await read(strips, in: snap)
+                } else {
+                    // Accessibility reports where text is now, which only matches the frame if
+                    // the screen is still.
+                    items = await Pipeline.items(in: snap, app: app, accessibility: still)
+                }
+                let tOCR = Date().timeIntervalSince(t0)
+                if full { learnLanguages(items) }
+                let fresh: [Block]
+                do { fresh = try await Pipeline.blocks(for: items, in: snap, to: target, focus: Pipeline.frontWindowFrame(of: app)) } catch {
                     Debug.log("follow refresh failed: \(error.localizedDescription) (\(items.count) items)")
                     return
                 }
                 guard running, token.sequence > shownSequence else { return }
-                Debug.log(String(format: "follow refresh %d blocks in %.0f ms (%@)", blocks.count, Date().timeIntervalSince(t0) * 1000, still ? "still" : "moving"))
-                if adopt(blocks, token) { shownSequence = token.sequence } else { dirty = true }
+                var newKnown = Self.untranslated(items, fresh).map(local)
+                if let strips {
+                    // Strips with nothing readable in them (pictures, icons) are known too.
+                    newKnown += strips.filter { r in !items.contains { local($0.rect).intersects(r) } }
+                }
+                var all = fresh, allKnown = newKnown
+                if !full {
+                    // Keep everything already followed, moved to where it is in this frame.
+                    guard token.reference == tracker.referenceID else { dirty = true; return }
+                    let (kept, keptKnown) = carried(token)
+                    for moved in kept where !fresh.contains(where: { $0.item.rect.intersection(moved.item.rect).width * $0.item.rect.intersection(moved.item.rect).height > moved.item.rect.width * moved.item.rect.height * 0.3 }) {
+                        all.append(moved)
+                    }
+                    allKnown += keptKnown
+                }
+                Debug.log(String(format: "follow %@ %d new blocks (%d kept) from %@ in %.0f ms (reading %.0f)", still ? "still" : "moving", fresh.count, all.count - fresh.count,
+                                 strips.map { "\($0.count) strips, \(Int($0.reduce(0) { $0 + $1.height })) pt tall" } ?? "whole window", Date().timeIntervalSince(t0) * 1000, tOCR * 1000))
+                if adopt(all, known: allKnown, token) {
+                    shownSequence = token.sequence
+                    if full { lastFullRead = Date(); partialSinceFull = false } else { partialSinceFull = true }
+                } else { dirty = true }
             }
         }
+    }
+
+    /// The parts of frame `token` with something on them that nothing followed covers:
+    /// horizontal strips (in top-down points) to read. `edges`: leave out text cut by the
+    /// top and bottom edges while scrolling; it will be whole in a moment.
+    private func unread(_ token: MotionTracker.Token, edges: Bool) -> [CGRect] {
+        let w = token.w, h = token.h, cw = 32, ch = 8
+        let cols = (w + cw - 1) / cw, rows = (h + ch - 1) / ch
+        var covered = [Bool](repeating: false, count: cols * rows)
+        let rects = blocks.map { local($0.item.rect) } + known
+        for (i, r) in rects.enumerated() where i < token.shifts.count && !token.hidden.contains(i) {
+            let m = r.offsetBy(dx: 0, dy: CGFloat(token.shifts[i])).insetBy(dx: -3, dy: -3)
+            let c0 = max(0, Int(m.minX) / cw), c1 = min(cols - 1, Int(m.maxX) / cw)
+            let r0 = max(0, Int(m.minY) / ch), r1 = min(rows - 1, Int(m.maxY) / ch)
+            guard c0 <= c1, r0 <= r1 else { continue }
+            for rr in r0...r1 {
+                let cy = CGFloat(rr * ch + ch / 2)
+                guard cy >= m.minY, cy <= m.maxY else { continue }
+                for cc in c0...c1 where CGFloat(cc * cw + cw / 2) >= m.minX && CGFloat(cc * cw + cw / 2) <= m.maxX { covered[rr * cols + cc] = true }
+            }
+        }
+        // A cell needs reading if it has edges in it (text, pictures) and isn't covered.
+        var need = [Bool](repeating: false, count: cols * rows)
+        token.luma.withUnsafeBufferPointer { l in
+            for rr in 0..<rows {
+                if edges, rr * ch < 10 || (rr + 1) * ch > h - 10 { continue }
+                for cc in 0..<cols where !covered[rr * cols + cc] {
+                    var busy = 0
+                    let y1 = min(h, rr * ch + ch), x1 = min(w - 1, cc * cw + cw)
+                    var y = rr * ch
+                    while y < y1 {
+                        for x in (cc * cw)..<x1 where abs(Int(l[y * w + x + 1]) - Int(l[y * w + x])) > 28 { busy += 1 }
+                        y += 2
+                    }
+                    need[rr * cols + cc] = busy >= 4
+                }
+            }
+        }
+        // Rows of needed cells, joined into strips (one empty row may sit between).
+        var strips: [CGRect] = []
+        var start = -1, gap = 0, minC = cols, maxC = -1
+        func close(_ end: Int) {
+            guard start >= 0 else { return }
+            let r = CGRect(x: max(0, minC * cw - 8), y: max(0, start * ch - 4), width: 0, height: 0)
+            let x1 = min(w, (maxC + 1) * cw + 8), y1 = min(h, (end + 1) * ch + 4)
+            var s = CGRect(x: r.minX, y: r.minY, width: CGFloat(x1) - r.minX, height: CGFloat(y1) - r.minY)
+            if s.height < 18 { s = s.insetBy(dx: 0, dy: -(18 - s.height) / 2).intersection(CGRect(x: 0, y: 0, width: w, height: h)) }
+            strips.append(s)
+            start = -1; minC = cols; maxC = -1
+        }
+        for rr in 0..<rows {
+            let row = (0..<cols).filter { need[rr * cols + $0] }
+            if row.isEmpty {
+                if start >= 0 { gap += 1; if gap > 1 { close(rr - gap) ; gap = 0 } }
+                continue
+            }
+            if start < 0 { start = rr }
+            gap = 0
+            minC = min(minC, row.first!); maxC = max(maxC, row.last!)
+        }
+        close(rows - 1 - gap)
+        return strips
     }
 
     /// Translates text just above and below the window ahead of time, where the app reports
@@ -238,7 +536,11 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
 final class MotionTracker: @unchecked Sendable {
     struct Token {
         var sequence: Int { changes }
-        fileprivate let changes: Int; fileprivate let luma: [UInt8]; fileprivate let w: Int; fileprivate let h: Int; let pixels: PixelBuffer? }
+        fileprivate let changes: Int; fileprivate let luma: [UInt8]; fileprivate let w: Int; fileprivate let h: Int; let pixels: PixelBuffer?
+        /// The reference the boxes below belong to, each box's move in this frame (rows,
+        /// down is positive) and the boxes that weren't found in it.
+        let reference: Int; let shifts: [Int]; let hidden: Set<Int>
+    }
     /// `time`: when the frame was on screen (CACurrentMediaTime seconds).
     struct Motion { let reference: Int; let shifts: [Int]?; let hidden: Set<Int>; var time = CACurrentMediaTime() }
 
@@ -258,6 +560,7 @@ final class MotionTracker: @unchecked Sendable {
     private var refSmall: [UInt8] = []
     private var boxes: [Box] = []
     private var last: [Int] = []
+    private var lastHidden = Set<Int>()
     private var lastBand: [Int] = []
     private static let bandCount = 4, small = 8
 
@@ -280,7 +583,7 @@ final class MotionTracker: @unchecked Sendable {
                 }
                 CVPixelBufferUnlockBaseAddress(pb, .readOnly)
             }
-            return Token(changes: changes, luma: luma, w: w, h: h, pixels: px)
+            return Token(changes: changes, luma: luma, w: w, h: h, pixels: px, reference: refID, shifts: last, hidden: lastHidden)
         }
     }
 
@@ -297,6 +600,7 @@ final class MotionTracker: @unchecked Sendable {
                 return Box(x0: x0, x1: max(x0, x1), y0: y0, y1: max(y0, y1), contrast: Self.contrast(ref, w, x0, max(x0, x1), y0, max(y0, y1)))
             }
             last = Array(repeating: 0, count: rects.count)
+            lastHidden = []
             lastBand = Array(repeating: 0, count: Self.bandCount)
             refID += 1
             return .some(t.changes == changes ? nil : track(luma))
@@ -369,6 +673,7 @@ final class MotionTracker: @unchecked Sendable {
             }
             if best.0 < 0.35 { shifts[i] = best.1; last[i] = best.1 } else { hidden.insert(i); shifts[i] = last[i] }
         }
+        lastHidden = hidden
         return Motion(reference: refID, shifts: shifts, hidden: hidden)
     }
 

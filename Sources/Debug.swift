@@ -63,6 +63,16 @@ enum Debug {
             }
             return true
         }
+        if let input = env["LINGVEIL_DEBUG_COPY"] {
+            // Copy Text on an image (as a 2x screen): prints what would go on the clipboard.
+            Task {
+                guard let img = NSImage(contentsOfFile: input)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                      let snap = Snapshot(image: img, frame: CGRect(x: 0, y: 0, width: img.width / 2, height: img.height / 2), scale: 2) else { exit(1) }
+                print(CopyText.arrange(await Pipeline.items(in: snap, app: nil)))
+                exit(0)
+            }
+            return true
+        }
         guard let input = env["LINGVEIL_DEBUG_IMAGE"], let out = env["LINGVEIL_DEBUG_OUT"] else { return false }
         Task {
             guard let src = NSImage(contentsOfFile: input)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -208,6 +218,7 @@ enum Debug {
                         case .live: return !(Live.shared.debugView?.blocks.isEmpty ?? true)
                         case .cursor, .selection: return Bubble.shared.debugText != nil
                         case .read, .translateRead: return Narrator.shared.isSpeaking
+                        case .copyText: return CopyText.last != nil
                         }
                     }
                     for _ in 0..<120 where !done() { try? await Task.sleep(for: .milliseconds(50)) }

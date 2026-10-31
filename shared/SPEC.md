@@ -244,15 +244,40 @@ Windows:
 - Shown position = measured + speed × (frame age + 4 ms), speed from the last two frames'
   display times; when frames stop for 45 ms, settle on the measured position.
 - Re-reading uses the tracked frames themselves (so text and positions come from the same
-  moment): 0.12 s after things stop (accurate OCR plus accessibility), and every 0.25 s
-  while scrolling slower than 1500 pt/s (fast OCR, no accessibility, since accessibility
-  reports positions as of now). A still re-read starts even if a moving one is in flight;
-  results older than what is shown are dropped. Blocks read from an older frame are moved
-  to where their text is now before they appear.
+  moment): 0.12 s after things stop, and every 0.25 s while scrolling slower than
+  1500 pt/s. Only what isn't followed yet is read: a grid of 32×8 pt cells; a cell needs
+  reading if it has edges in it (≥ 4 brightness steps > 28) and no followed box covers it;
+  needed cells are joined into horizontal strips (while scrolling, leave out 10 pt at the
+  top and bottom edges: lines cut there are read when whole). All strips go to the
+  recognizer as one stacked image (24 px between strips, padded with each row's last pixel),
+  accurate mode, with the page's languages once known (learned from the first full read:
+  language guesses > 0.15, plus English). If strips cover > 60% of the area, read it all.
+  Areas read that need no translation (code, numbers, text already in the target
+  language, pictures without text) are followed too, so they aren't read again.
+  After 1 s of stillness following partial reads, read the whole area once with
+  accessibility (exact text, fonts). Never use Vision's fast mode for this: it can't read
+  non-Latin scripts and is worse below ~13 pt (bench/ocr).
+  A still read starts even if a moving one is in flight; results older than what is shown
+  are dropped. Blocks read from an older frame are moved to where their text is now before
+  they appear.
+- Scrolling back: when a block leaves (scrolled away or changed), keep it with its pixels
+  as they were when it was read (up to 300). While text is unread (scrolling slower than
+  1500 pt/s, at most every 80 ms, off the main thread), slide each remembered picture up
+  and down over the unread strips at its own x (row-profile pass, then pixels at the best
+  3 spots; mean difference ÷ contrast < 0.15) and put matches straight back: no reading,
+  no translating.
 - Ahead of time: text the app reports beyond the window (web pages, documents), up to two
   window heights above and below, is translated into the cache when following starts
   (not for models running on the device).
 - Measured with `harness` (debug) + `bench/follow.py`; see bench/BENCHMARKS.md.
+
+### 2.12c Copy text from an area (⌥⇧C)
+- Pick an area like Translate Area; read it (accessibility for the front app where it has
+  the text, otherwise OCR, accurate, any language) and put plain text on the clipboard.
+- Order: reading order (2.14). Between blocks: a tab when the next one is on the same row
+  to the right (form rows, table cells), a blank line when the gap is more than 1.2 line
+  heights, otherwise a newline. Toast "Copied N lines of text" (one line: "Copied: <start>").
+- Nothing found: toast "No text found there".
 
 ### 2.13 Web pages (toggle "Translate web pages by paragraph", default on)
 - Applies to text inside any web area (every browser, and web-based apps), detected from

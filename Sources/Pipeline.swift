@@ -81,7 +81,10 @@ enum Pipeline {
                 guard let batch = pending.popFirst() else { return }
                 g.addTask {
                     do {
+                        let tt = Date()
                         let translated = try await Translation.translate(batch.map(\.text), to: target)
+                        let tNet = Date().timeIntervalSince(tt)
+                        defer { Debug.log(String(format: "batch %d: translate %.0f ms, colors and fit %.0f ms", batch.count, tNet * 1000, (Date().timeIntervalSince(tt) - tNet) * 1000)) }
                         return .success(zip(batch, translated).compactMap { item, t -> Block? in
                             let clean = t.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !clean.isEmpty, clean.caseInsensitiveCompare(item.text) != .orderedSame else { return nil }

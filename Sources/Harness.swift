@@ -69,8 +69,8 @@ enum Harness {
             let line = (content as NSString).substring(with: chars).trimmingCharacters(in: .whitespacesAndNewlines)
             if !line.isEmpty { out.write(Data(String(format: "line %.1f\t%@\n", r.minY, line).utf8)) }
         }
-        // Script: settle, slow scroll, pause, flick, pause, scroll back, pause.
-        let steps: [(duration: Double, by: CGFloat, ease: Bool)] = [(5, 0, false), (1.2, 700, true), (2.5, 0, false), (0.5, 1400, false), (2.5, 0, false), (1.0, -900, true), (2.5, 0, false)]
+        // Script: settle, slow scroll, pause, flick, pause, scroll back, pause, back to the top, pause.
+        let steps: [(duration: Double, by: CGFloat, ease: Bool)] = [(5, 0, false), (1.2, 700, true), (2.5, 0, false), (0.5, 1400, false), (2.5, 0, false), (1.0, -900, true), (2.5, 0, false), (1.0, -1200, true), (2.5, 0, false)]
         var y: CGFloat = 0
         let t0 = Date()
         var stepStart = t0, stepIndex = 0, from: CGFloat = 0

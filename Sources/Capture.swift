@@ -19,6 +19,17 @@ struct Snapshot {
 
     var image: CGImage { pixels.cgImage }
 
+    /// A copy of part of the snapshot (global AppKit rect), to read just that part.
+    func cropped(to r: CGRect) -> Snapshot? {
+        let px = pixelRect(r).integral.intersection(CGRect(x: 0, y: 0, width: pixels.width, height: pixels.height))
+        guard px.width >= 8, px.height >= 8, let out = PixelBuffer(width: Int(px.width), height: Int(px.height)) else { return nil }
+        for y in 0..<out.height {
+            memcpy(out.base + y * out.bytesPerRow, pixels.base + (Int(px.minY) + y) * pixels.bytesPerRow + Int(px.minX) * 4, out.bytesPerRow)
+        }
+        let f = CGRect(x: frame.minX + px.minX / scale, y: frame.maxY - px.maxY / scale, width: px.width / scale, height: px.height / scale)
+        return Snapshot(pixels: out, frame: f, scale: scale)
+    }
+
     /// Global AppKit rect -> pixel rect (top-left origin).
     func pixelRect(_ r: CGRect) -> CGRect {
         CGRect(x: (r.minX - frame.minX) * scale, y: (frame.maxY - r.maxY) * scale,

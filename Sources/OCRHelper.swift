@@ -5,7 +5,8 @@ import Darwin
 /// ~120 MB once loaded and can't be unloaded, so keeping them in a helper that quits after
 /// a short idle period lets the menu bar app sit at a few tens of MB between uses.
 /// Wire format, both ways over stdin/stdout:
-///   request:  UInt32 width, height, flags (bit 0 = fast), minHeight(px)  + width*height*4 BGRA bytes
+///   request:  UInt32 width, height, flags (bit 0 = fast), minHeight(px), language bytes
+///             + width*height*4 BGRA bytes + languages (comma-separated codes; empty = detect)
 ///   response: UInt32 byte count + JSON [[text, x, y, w, h], ...]
 actor OCRHelper {
     static let shared = OCRHelper()
@@ -15,14 +16,16 @@ actor OCRHelper {
     private var input: FileHandle?
     private var output: FileHandle?
 
-    func recognize(_ pixels: PixelBuffer, fast: Bool, minHeight: CGFloat) async -> [(String, CGRect)] {
+    /// `languages`: the text's languages when known (e.g. ["hi", "en"]), which spares Vision
+    /// from working them out and reads about a third faster; nil to detect.
+    func recognize(_ pixels: PixelBuffer, fast: Bool, minHeight: CGFloat, languages: [String]? = nil) async -> [(String, CGRect)] {
         let bytes = Data(bytesNoCopy: pixels.base, count: pixels.count, deallocator: .none)
         for _ in 0..<2 {
-            if let r = try? exchange(bytes, pixels.width, pixels.height, fast: fast, minHeight: minHeight) { return r }
+            if let r = try? exchange(bytes, pixels.width, pixels.height, fast: fast, minHeight: minHeight, languages: languages ?? []) { return r }
             stop()
         }
         // Helper unavailable: do it here rather than fail.
-        return withExtendedLifetime(pixels) { OCR.recognize(pixels.cgImage, fast: fast, minHeight: minHeight) }
+        return withExtendedLifetime(pixels) { OCR.recognize(pixels.cgImage, fast: fast, minHeight: minHeight, languages: languages ?? []) }
     }
 
     /// Starts the helper and runs one tiny recognition so the models are compiled and
@@ -38,12 +41,14 @@ actor OCRHelper {
         _ = await recognize(px, fast: false, minHeight: 4)
     }
 
-    private func exchange(_ pixels: Data, _ w: Int, _ h: Int, fast: Bool, minHeight: CGFloat) throws -> [(String, CGRect)] {
+    private func exchange(_ pixels: Data, _ w: Int, _ h: Int, fast: Bool, minHeight: CGFloat, languages: [String]) throws -> [(String, CGRect)] {
         try start()
         guard let input, let output else { throw LingveilError.message("no helper") }
-        var header = [UInt32(w), UInt32(h), fast ? 1 : 0, UInt32(minHeight)]
-        try input.write(contentsOf: Data(bytes: &header, count: 16))
+        let langs = Data(languages.joined(separator: ",").utf8)
+        var header = [UInt32(w), UInt32(h), fast ? 1 : 0, UInt32(minHeight), UInt32(langs.count)]
+        try input.write(contentsOf: Data(bytes: &header, count: 20))
         try input.write(contentsOf: pixels)
+        try input.write(contentsOf: langs)
         guard let lenData = try output.read(upToCount: 4), lenData.count == 4 else { throw LingveilError.message("helper closed") }
         let len = Int(lenData.withUnsafeBytes { $0.load(as: UInt32.self) })
         var body = Data()
@@ -85,10 +90,11 @@ actor OCRHelper {
         while true {
             var pfd = pollfd(fd: 0, events: Int16(POLLIN), revents: 0)
             if poll(&pfd, 1, idleExit) <= 0 { exit(0) }
-            guard let header = readExactly(16) else { exit(0) }
+            guard let header = readExactly(20) else { exit(0) }
             let v = header.withUnsafeBytes { Array($0.bindMemory(to: UInt32.self)) }
-            let w = Int(v[0]), h = Int(v[1]), fast = v[2] & 1 == 1, minHeight = CGFloat(v[3])
-            guard w > 0, h > 0, w * h < 120_000_000, let pixels = readExactly(w * h * 4) else { exit(1) }
+            let w = Int(v[0]), h = Int(v[1]), fast = v[2] & 1 == 1, minHeight = CGFloat(v[3]), langBytes = Int(v[4])
+            guard w > 0, h > 0, w * h < 120_000_000, langBytes < 4096, let pixels = readExactly(w * h * 4) else { exit(1) }
+            let languages = langBytes == 0 ? [] : (readExactly(langBytes).flatMap { String(data: $0, encoding: .utf8) } ?? "").split(separator: ",").map(String.init)
             var rows: [[Any]] = []
             autoreleasepool {
                 if let provider = CGDataProvider(data: pixels as CFData),
@@ -96,7 +102,7 @@ actor OCRHelper {
                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
                                      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) {
-                    rows = OCR.recognize(img, fast: fast, minHeight: minHeight).map { [$0.0, $0.1.minX, $0.1.minY, $0.1.width, $0.1.height] }
+                    rows = OCR.recognize(img, fast: fast, minHeight: minHeight, languages: languages).map { [$0.0, $0.1.minX, $0.1.minY, $0.1.width, $0.1.height] }
                 }
             }
             let body = (try? JSONSerialization.data(withJSONObject: rows)) ?? Data("[]".utf8)

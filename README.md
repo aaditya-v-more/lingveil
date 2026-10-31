@@ -17,6 +17,7 @@ Free, native (Swift/AppKit), menu bar only.
 | ⌥⇧L | Live-translate an area: keeps up as it changes (subtitles, chats, games). ⌥Esc stops |
 | ⌥⇧D | Translate the text under the pointer in a small card |
 | ⌥⇧S | Translate the selected text in a small card |
+| ⌥⇧C | Copy text from an area: drag over anything and its text goes on the clipboard |
 
 While a translation is showing, hold ⌥ to see the original, rest the pointer on a block to read its original, and right-click to copy. All shortcuts can be changed in Settings.
 

@@ -54,11 +54,14 @@ enum OCR {
     }
 
     /// Vision text recognition: lines with normalized, bottom-left-origin boxes.
-    static func recognize(_ image: CGImage, fast: Bool, minHeight: CGFloat) -> [(String, CGRect)] {
+    static func recognize(_ image: CGImage, fast: Bool, minHeight: CGFloat, languages: [String] = []) -> [(String, CGRect)] {
         let req = VNRecognizeTextRequest()
         req.recognitionLevel = fast ? .fast : .accurate
         req.usesLanguageCorrection = !fast
-        req.automaticallyDetectsLanguage = true
+        // Known languages (codes like "hi") -> Vision's identifiers ("hi-IN"); otherwise detect.
+        let supported = (try? req.supportedRecognitionLanguages()) ?? []
+        let pinned = languages.compactMap { l in supported.first { $0 == l || $0.hasPrefix(l + "-") } }
+        if pinned.isEmpty { req.automaticallyDetectsLanguage = true } else { req.recognitionLanguages = pinned; req.automaticallyDetectsLanguage = false }
         req.minimumTextHeight = Float(minHeight) / Float(max(1, image.height))
         imageSize = CGSize(width: image.width, height: image.height)
         try? VNImageRequestHandler(cgImage: image, options: [:]).perform([req])

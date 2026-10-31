@@ -37,6 +37,7 @@ def moving(t): return abs(offset(t) - offset(t - 0.25)) > 0.5
 
 def where(text):
     key = " ".join(text.split())[:18]
+    if len(key) < 8: return None   # fragments this short match the wrong line
     hits = [y for y, l in lines if key and key in " ".join(l.split())]
     return hits[0] if len(hits) == 1 else None   # skip text that appears more than once
 
@@ -96,3 +97,21 @@ if waits:
     waits.sort()
     print(f"new text: {len(waits)} lines, translated after median {waits[len(waits)//2]:.2f} s, 90% {waits[int(.9*len(waits))]:.2f} s "
           f"({never} lines never translated: code, tables and other text that is left as is)")
+
+# Text scrolled back into view after it had been translated: how long until it shows again.
+backs = []
+def covered(y, t, rows): 
+    o = offset(t)
+    return any(top - 3 <= y - o + base <= top + h for top, _, h in rows)
+for y, l in lines:
+    if len(l.strip()) < 12: continue
+    seen, out, back_at = False, False, None
+    for t, rows in events:
+        o = offset(t); inside = 8 <= y - o <= VIEW_H - 28
+        if inside and covered(y, t, rows): seen = True
+        if seen and not inside: out = True
+        if out and inside and back_at is None: back_at = t
+        if back_at is not None and covered(y, t, rows): backs.append(t - back_at); break
+if backs:
+    backs.sort()
+    print(f"came back: {len(backs)} lines shown again after median {backs[len(backs)//2]*1000:.0f} ms, 90% {backs[int(.9*len(backs))]*1000:.0f} ms")
