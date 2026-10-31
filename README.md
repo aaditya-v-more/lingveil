@@ -35,6 +35,13 @@ While a translation is showing, hold ⌥ to see the original, rest the pointer o
   - Your own Google Cloud or DeepL API key, or Ollama / another local server.
 - **Light on memory**: OCR runs in a helper process that quits after 90 seconds idle, and a local model's server stops after 3 idle minutes or when macOS is short of memory, so between uses the app holds only a few tens of MB. Live mode only re-reads the area when its pixels change.
 
+## Layout
+
+- `Sources/` — the macOS app (Swift, AppKit).
+- `windows/` — the Windows app (C#, .NET 8, WPF).
+- `shared/` — what both read: `models.json` (local model catalog, prompts, server settings), `languages.json`, and `SPEC.md`, the behavior both apps follow.
+- `bench/` — translation test sets, runner and scorer behind the model ratings.
+
 ## Build
 
 ```sh

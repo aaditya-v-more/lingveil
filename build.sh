@@ -18,6 +18,7 @@ rm build/Lingveil-*
 
 sed -e "s/VERSION/$VERSION/g" Resources/Info.plist > "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp shared/models.json shared/languages.json "$APP/Contents/Resources/"
 
 # llama.cpp's server runs the downloadable local models (Apple silicon only). Built once,
 # statically, with its Metal shaders embedded, from LLAMA_CPP_DIR (default ../llama.cpp).

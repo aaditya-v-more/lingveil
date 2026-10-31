@@ -3,9 +3,9 @@ import CryptoKit
 import NaturalLanguage
 
 /// A translation model that runs on this Mac through the bundled llama.cpp server.
-struct LocalModel: Identifiable, Hashable {
-    enum Prompt { case hyMT, indexTranslate, gemma, translateGemma }
-
+/// The catalog, prompt formats and server settings live in shared/models.json, which the
+/// Windows app reads too, so both offer the same models with the same ratings and prompts.
+struct LocalModel: Identifiable, Hashable, Decodable {
     let id: String
     let name: String
     let maker: String
@@ -16,76 +16,22 @@ struct LocalModel: Identifiable, Hashable {
     let bytes: Int64
     let ramGB: Int           // smallest Mac (unified memory) it runs comfortably on
     let languages: Int
-    let prompt: Prompt
-    let speed: Int           // 1-5, measured on an M-series Mac (see BENCHMARKS.md)
-    let accuracy: Int        // 1-5, measured against reference translations
+    let prompt: String       // key into Catalog.prompts
+    let speed: Int           // 1-5 (0 = not rated yet); see bench/BENCHMARKS.md
+    let accuracy: Int
     let recommended: Bool    // tested and suggested for most Macs
     let license: String
-    var badge: String? = nil  // what it is best at, shown on recommended models
-    var supported: Set<String>? = nil   // Google-style codes; nil = everything in Language.all
+    let badge: String?       // what it is best at, shown on recommended models
+    let supported: String?   // key into Catalog.languageSets; nil = every language
 
     var url: URL { URL(string: "https://huggingface.co/\(repo)/resolve/main/\(file)")! }
     var sizeText: String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
-    func supports(_ l: Language) -> Bool { supported?.contains(l.code) ?? true }
+    func supports(_ l: Language) -> Bool {
+        guard let key = supported else { return true }
+        return Catalog.shared.languageSets[key]?.contains(l.code) ?? true
+    }
 
-    static let hyMTLanguages: Set<String> = ["zh-CN", "en", "fr", "pt", "es", "ja", "tr", "ru", "ar", "ko", "th", "it", "de", "vi", "ms",
-                                             "id", "tl", "hi", "zh-TW", "pl", "cs", "nl", "fa", "gu", "ur", "te", "mr", "iw", "bn", "ta", "uk"]
-
-    /// Ordered as shown: tested recommendations first, then everything else by size.
-    static let catalog: [LocalModel] = [
-        LocalModel(id: "index-translate-2b", name: "Index-Translate 2B", maker: "IndexTeam",
-                   summary: "A translation model on Qwen 3.5 covering 150 languages. Close to the most accurate pick, with natural everyday wording.",
-                   repo: "IndexTeam/Index-Translate-2B-GGUF", file: "Index-Translate-2B.Q4_K_M.gguf",
-                   sha256: "044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a", bytes: 1_310_000_000,
-                   ramGB: 8, languages: 150, prompt: .indexTranslate, speed: 4, accuracy: 4, recommended: true, license: "Apache 2.0",
-                   badge: "Best balance"),
-        LocalModel(id: "hy-mt2-1.8b", name: "Hy-MT2 1.8B", maker: "Tencent",
-                   summary: "Built only for translation and the quickest of the three. Wording is more literal and it slips on less common languages.",
-                   repo: "tencent/Hy-MT2-1.8B-GGUF", file: "Hy-MT2-1.8B-Q4_K_M.gguf",
-                   sha256: "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699", bytes: 1_130_000_000,
-                   ramGB: 8, languages: 36, prompt: .hyMT, speed: 5, accuracy: 3, recommended: true, license: "Apache 2.0",
-                   badge: "Fastest", supported: hyMTLanguages),
-        LocalModel(id: "gemma-4-e2b", name: "Gemma 4 E2B", maker: "Google",
-                   summary: "Google's general model. The most accurate in our tests, especially into Hindi, at a bigger download and a little less speed.",
-                   repo: "ggml-org/gemma-4-E2B-it-GGUF", file: "gemma-4-E2B-it-Q4_0.gguf",
-                   sha256: "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52", bytes: 2_840_000_000,
-                   ramGB: 8, languages: 140, prompt: .gemma, speed: 3, accuracy: 5, recommended: true, license: "Apache 2.0",
-                   badge: "Most accurate"),
-
-        LocalModel(id: "translategemma-4b", name: "TranslateGemma 4B", maker: "Google",
-                   summary: "Gemma 3 tuned by the Google Translate team. Strong on long text, slower on short labels.",
-                   repo: "mradermacher/translategemma-4b-it-GGUF", file: "translategemma-4b-it.Q4_K_M.gguf",
-                   sha256: "81200d03e843d2ec1ece6eeafe7d13cb6e5211e1fcd336ade55790b683a08330", bytes: 2_490_000_000,
-                   ramGB: 8, languages: 55, prompt: .translateGemma, speed: 3, accuracy: 3, recommended: false, license: "Gemma"),
-        LocalModel(id: "gemma-4-e4b", name: "Gemma 4 E4B", maker: "Google",
-                   summary: "The larger sibling of Gemma 4 E2B: more fluent and better with idioms, at about half the speed.",
-                   repo: "ggml-org/gemma-4-E4B-it-GGUF", file: "gemma-4-E4B-it-Q4_0.gguf",
-                   sha256: "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2", bytes: 4_590_000_000,
-                   ramGB: 16, languages: 140, prompt: .gemma, speed: 2, accuracy: 4, recommended: false, license: "Apache 2.0"),
-        LocalModel(id: "hy-mt2-7b", name: "Hy-MT2 7B", maker: "Tencent",
-                   summary: "The 7B Hy-MT2. Tencent reports it ahead of much larger open models on translation.",
-                   repo: "tencent/Hy-MT2-7B-GGUF", file: "Hy-MT2-7B-Q4_K_M.gguf",
-                   sha256: "9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b", bytes: 4_620_000_000,
-                   ramGB: 16, languages: 36, prompt: .hyMT, speed: 2, accuracy: 5, recommended: false, license: "Apache 2.0",
-                   supported: hyMTLanguages),
-        LocalModel(id: "index-translate-9b", name: "Index-Translate 9B", maker: "IndexTeam",
-                   summary: "The 9B Index-Translate, 150 languages, for Macs with memory to spare.",
-                   repo: "IndexTeam/Index-Translate-9B-GGUF", file: "Index-Translate-9B.Q4_K_M.gguf",
-                   sha256: "9cc6758b0007f4cbf42ea3400768cbff91ae74ef8d640e467158348426d33713", bytes: 5_780_000_000,
-                   ramGB: 16, languages: 150, prompt: .indexTranslate, speed: 2, accuracy: 5, recommended: false, license: "Apache 2.0"),
-        LocalModel(id: "translategemma-12b", name: "TranslateGemma 12B", maker: "Google",
-                   summary: "The 12B TranslateGemma. Very accurate on documents, slow for live use.",
-                   repo: "mradermacher/translategemma-12b-it-GGUF", file: "translategemma-12b-it.Q4_K_M.gguf",
-                   sha256: "b7aac4b4be7ab0c49b6556c29c4467e74313df7f1e95d9f9676bb2adf0afa528", bytes: 7_300_000_000,
-                   ramGB: 16, languages: 55, prompt: .translateGemma, speed: 1, accuracy: 5, recommended: false, license: "Gemma"),
-        LocalModel(id: "hy-mt2-30b-a3b", name: "Hy-MT2 30B-A3B", maker: "Tencent",
-                   summary: "Mixture-of-experts: only 3B of its 30B weights run per word, so it is quick for its quality, but it needs a lot of memory.",
-                   repo: "tencent/Hy-MT2-30B-A3B-GGUF", file: "Hy-MT2-30B-A3B-Q4_K_M.gguf",
-                   sha256: "bb44b11bb0f7cd3d1321645b41e911cd3de2e473731227fc6bf37aa18b543f88", bytes: 18_240_000_000,
-                   ramGB: 32, languages: 36, prompt: .hyMT, speed: 3, accuracy: 5, recommended: false, license: "Apache 2.0",
-                   supported: hyMTLanguages),
-    ]
-
+    static var catalog: [LocalModel] { Catalog.shared.models }
     static func named(_ id: String) -> LocalModel? { catalog.first { $0.id == id } }
 
     static var macRAMGB: Int { Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded()) }
@@ -209,7 +155,7 @@ final class ModelStore: NSObject, ObservableObject, URLSessionDownloadDelegate {
 /// is only held while translations are actually happening.
 actor LlamaServer {
     static let shared = LlamaServer()
-    static let idleStop: TimeInterval = 180
+    static var idleStop: TimeInterval { TimeInterval(Catalog.shared.server.idleStopSeconds) }
 
     private var process: Process?
     private var port = 0
@@ -254,10 +200,7 @@ actor LlamaServer {
         // Lingveil quits or crashes, so a model is never left holding memory.
         p.executableURL = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
         p.arguments = ["--child-guard", bin.path, "-m", file.path, "--host", "127.0.0.1", "--port", String(port),
-                       "-c", "8192", "-np", "4", "-ngl", "99", "--jinja", "-fa", "on",
-                       // Small GPU work units keep window drawing smooth while it runs.
-                       "-b", "512", "-ub", "256",
-                       "--no-webui", "--log-disable", "-t", String(max(2, ProcessInfo.processInfo.activeProcessorCount / 2))]
+                       "-t", String(max(2, ProcessInfo.processInfo.activeProcessorCount / 2))] + Catalog.shared.server.args
         p.qualityOfService = .utility
         p.standardInput = Pipe()
         p.standardOutput = FileHandle.nullDevice
@@ -341,7 +284,7 @@ struct LocalTranslator: Translator {
                 let i = next; next += 1
                 g.addTask { (i, try await self.one(texts[i], to: target, base: base)) }
             }
-            for _ in 0..<4 { add() }
+            for _ in 0..<Catalog.shared.server.parallel { add() }
             while let (i, t) = try await g.next() { out[i] = t; add() }
             await LlamaServer.shared.touch()
             return out
@@ -349,40 +292,28 @@ struct LocalTranslator: Translator {
     }
 
     private func one(_ text: String, to target: Language, base: URL) async throws -> String {
+        guard let p = Catalog.shared.prompts[model.prompt] else { throw LingveilError.message("Unknown prompt format \(model.prompt)") }
         let maxTokens = min(1024, text.count * 4 + 48)
+        let src = Detect.language(of: text) ?? "en"
+        let filled = p.template
+            .replacingOccurrences(of: "{targetChinese}", with: target.chineseName)
+            .replacingOccurrences(of: "{targetCode}", with: target.appleID)
+            .replacingOccurrences(of: "{target}", with: target.name)
+            .replacingOccurrences(of: "{sourceCode}", with: src)
+            .replacingOccurrences(of: "{source}", with: Locale(identifier: "en").localizedString(forLanguageCode: src) ?? src)
+            .replacingOccurrences(of: "{text}", with: text)
+        var body: [String: Any] = p.params.mapValues(\.value)
         var req: URLRequest
-        var body: [String: Any]
-        switch model.prompt {
-        case .translateGemma:
-            // Its template expects structured content, so the prompt is built the way it would render.
-            let src = Detect.language(of: text) ?? "en"
-            let srcName = Locale(identifier: "en").localizedString(forLanguageCode: src) ?? src
-            let prompt = "<start_of_turn>user\nYou are a professional \(srcName) (\(src)) to \(target.name) (\(target.appleID)) translator. "
-                + "Your goal is to accurately convey the meaning and nuances of the original \(srcName) text while adhering to "
-                + "\(target.name) grammar, vocabulary, and cultural sensitivities.\nProduce only the \(target.name) translation, "
-                + "without any additional explanations or commentary. Please translate the following \(srcName) text into "
-                + "\(target.name):\n\n\n\(text)<end_of_turn>\n<start_of_turn>model\n"
+        if p.endpoint == "completion" {
             req = URLRequest(url: base.appendingPathComponent("completion"))
-            body = ["prompt": prompt, "n_predict": maxTokens, "temperature": 0, "cache_prompt": true]
-        default:
-            let content: String
-            var params: [String: Any] = ["temperature": 0]
-            switch model.prompt {
-            case .hyMT:
-                content = "Translate the following text into \(target.name). Note that you should only output the translated result without any additional explanation:\n\n\(text)"
-                params = ["temperature": 0.2, "top_p": 0.6, "top_k": 20, "repeat_penalty": 1.05]
-            case .indexTranslate:
-                content = "请将以下文本翻译为\(target.chineseName)，直接输出翻译结果，不要进行任何解释。\n\n\(text)"
-            default:
-                content = "Translate the following text into \(target.name). Reply with only the translation, nothing else.\n\n\(text)"
-            }
+            body["prompt"] = filled
+            body["n_predict"] = maxTokens
+            body["cache_prompt"] = true
+        } else {
             req = URLRequest(url: base.appendingPathComponent("v1/chat/completions"))
-            body = params.merging([
-                "messages": [["role": "user", "content": content]],
-                "max_tokens": maxTokens,
-                "chat_template_kwargs": ["enable_thinking": false],
-                "cache_prompt": true,
-            ]) { a, _ in a }
+            body["messages"] = [["role": "user", "content": filled]]
+            body["max_tokens"] = maxTokens
+            for (k, v) in Catalog.shared.server.chatExtra { body[k] = v.value }
         }
         req.httpMethod = "POST"
         req.timeoutInterval = 60
@@ -409,17 +340,36 @@ struct LocalTranslator: Translator {
     }
 }
 
-extension Language {
-    /// Name used in Chinese-language prompts (Index-Translate is trained on them).
-    var chineseName: String {
-        [
-            "en": "英语", "es": "西班牙语", "fr": "法语", "de": "德语", "it": "意大利语", "pt": "葡萄牙语", "nl": "荷兰语",
-            "ru": "俄语", "uk": "乌克兰语", "pl": "波兰语", "cs": "捷克语", "sv": "瑞典语", "da": "丹麦语", "nb": "挪威语",
-            "fi": "芬兰语", "el": "希腊语", "tr": "土耳其语", "ro": "罗马尼亚语", "hu": "匈牙利语", "ar": "阿拉伯语",
-            "iw": "希伯来语", "fa": "波斯语", "hi": "印地语", "bn": "孟加拉语", "ur": "乌尔都语", "mr": "马拉地语",
-            "ta": "泰米尔语", "te": "泰卢固语", "gu": "古吉拉特语", "kn": "卡纳达语", "ml": "马拉雅拉姆语", "pa": "旁遮普语",
-            "th": "泰语", "vi": "越南语", "id": "印尼语", "ms": "马来语", "tl": "菲律宾语", "zh-CN": "简体中文",
-            "zh-TW": "繁体中文", "ja": "日语", "ko": "韩语",
-        ][code] ?? name
+/// shared/models.json, bundled in the app's resources.
+struct Catalog: Decodable {
+    struct Prompt: Decodable { let endpoint: String; let template: String; let params: [String: JSONValue] }
+    struct Server: Decodable {
+        let args: [String]; let parallel: Int; let idleStopSeconds: Int; let chatExtra: [String: JSONValue]
+    }
+    let languageSets: [String: Set<String>]
+    let prompts: [String: Prompt]
+    let server: Server
+    let models: [LocalModel]
+
+    static let shared: Catalog = {
+        guard let url = Bundle.main.url(forResource: "models", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { fatalError("models.json missing from the app bundle") }
+        do { return try JSONDecoder().decode(Catalog.self, from: data) }
+        catch { fatalError("models.json is invalid: \(error)") }
+    }()
+}
+
+/// Any JSON value, for prompt parameters passed straight through to the server.
+struct JSONValue: Decodable {
+    let value: Any
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let b = try? c.decode(Bool.self) { value = b }
+        else if let i = try? c.decode(Int.self) { value = i }
+        else if let d = try? c.decode(Double.self) { value = d }
+        else if let s = try? c.decode(String.self) { value = s }
+        else if let o = try? c.decode([String: JSONValue].self) { value = o.mapValues(\.value) }
+        else if let a = try? c.decode([JSONValue].self) { value = a.map(\.value) }
+        else { value = NSNull() }
     }
 }

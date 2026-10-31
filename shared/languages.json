@@ -1,0 +1,251 @@
+{
+  "about": "Target languages. code = Google-style code used everywhere in the apps; appleId = BCP-47 id for Apple Translation and language detection; chineseName = name used in Index-Translate prompts.",
+  "languages": [
+    {
+      "code": "en",
+      "name": "English",
+      "appleId": "en",
+      "chineseName": "英语"
+    },
+    {
+      "code": "es",
+      "name": "Spanish",
+      "appleId": "es",
+      "chineseName": "西班牙语"
+    },
+    {
+      "code": "fr",
+      "name": "French",
+      "appleId": "fr",
+      "chineseName": "法语"
+    },
+    {
+      "code": "de",
+      "name": "German",
+      "appleId": "de",
+      "chineseName": "德语"
+    },
+    {
+      "code": "it",
+      "name": "Italian",
+      "appleId": "it",
+      "chineseName": "意大利语"
+    },
+    {
+      "code": "pt",
+      "name": "Portuguese",
+      "appleId": "pt",
+      "chineseName": "葡萄牙语"
+    },
+    {
+      "code": "nl",
+      "name": "Dutch",
+      "appleId": "nl",
+      "chineseName": "荷兰语"
+    },
+    {
+      "code": "ru",
+      "name": "Russian",
+      "appleId": "ru",
+      "chineseName": "俄语"
+    },
+    {
+      "code": "uk",
+      "name": "Ukrainian",
+      "appleId": "uk",
+      "chineseName": "乌克兰语"
+    },
+    {
+      "code": "pl",
+      "name": "Polish",
+      "appleId": "pl",
+      "chineseName": "波兰语"
+    },
+    {
+      "code": "cs",
+      "name": "Czech",
+      "appleId": "cs",
+      "chineseName": "捷克语"
+    },
+    {
+      "code": "sv",
+      "name": "Swedish",
+      "appleId": "sv",
+      "chineseName": "瑞典语"
+    },
+    {
+      "code": "da",
+      "name": "Danish",
+      "appleId": "da",
+      "chineseName": "丹麦语"
+    },
+    {
+      "code": "nb",
+      "name": "Norwegian",
+      "appleId": "nb",
+      "chineseName": "挪威语"
+    },
+    {
+      "code": "fi",
+      "name": "Finnish",
+      "appleId": "fi",
+      "chineseName": "芬兰语"
+    },
+    {
+      "code": "el",
+      "name": "Greek",
+      "appleId": "el",
+      "chineseName": "希腊语"
+    },
+    {
+      "code": "tr",
+      "name": "Turkish",
+      "appleId": "tr",
+      "chineseName": "土耳其语"
+    },
+    {
+      "code": "ro",
+      "name": "Romanian",
+      "appleId": "ro",
+      "chineseName": "罗马尼亚语"
+    },
+    {
+      "code": "hu",
+      "name": "Hungarian",
+      "appleId": "hu",
+      "chineseName": "匈牙利语"
+    },
+    {
+      "code": "ar",
+      "name": "Arabic",
+      "appleId": "ar",
+      "chineseName": "阿拉伯语"
+    },
+    {
+      "code": "iw",
+      "name": "Hebrew",
+      "appleId": "he",
+      "chineseName": "希伯来语"
+    },
+    {
+      "code": "fa",
+      "name": "Persian",
+      "appleId": "fa",
+      "chineseName": "波斯语"
+    },
+    {
+      "code": "hi",
+      "name": "Hindi",
+      "appleId": "hi",
+      "chineseName": "印地语"
+    },
+    {
+      "code": "bn",
+      "name": "Bengali",
+      "appleId": "bn",
+      "chineseName": "孟加拉语"
+    },
+    {
+      "code": "ur",
+      "name": "Urdu",
+      "appleId": "ur",
+      "chineseName": "乌尔都语"
+    },
+    {
+      "code": "mr",
+      "name": "Marathi",
+      "appleId": "mr",
+      "chineseName": "马拉地语"
+    },
+    {
+      "code": "ta",
+      "name": "Tamil",
+      "appleId": "ta",
+      "chineseName": "泰米尔语"
+    },
+    {
+      "code": "te",
+      "name": "Telugu",
+      "appleId": "te",
+      "chineseName": "泰卢固语"
+    },
+    {
+      "code": "gu",
+      "name": "Gujarati",
+      "appleId": "gu",
+      "chineseName": "古吉拉特语"
+    },
+    {
+      "code": "kn",
+      "name": "Kannada",
+      "appleId": "kn",
+      "chineseName": "卡纳达语"
+    },
+    {
+      "code": "ml",
+      "name": "Malayalam",
+      "appleId": "ml",
+      "chineseName": "马拉雅拉姆语"
+    },
+    {
+      "code": "pa",
+      "name": "Punjabi",
+      "appleId": "pa",
+      "chineseName": "旁遮普语"
+    },
+    {
+      "code": "th",
+      "name": "Thai",
+      "appleId": "th",
+      "chineseName": "泰语"
+    },
+    {
+      "code": "vi",
+      "name": "Vietnamese",
+      "appleId": "vi",
+      "chineseName": "越南语"
+    },
+    {
+      "code": "id",
+      "name": "Indonesian",
+      "appleId": "id",
+      "chineseName": "印尼语"
+    },
+    {
+      "code": "ms",
+      "name": "Malay",
+      "appleId": "ms",
+      "chineseName": "马来语"
+    },
+    {
+      "code": "tl",
+      "name": "Filipino",
+      "appleId": "tl",
+      "chineseName": "菲律宾语"
+    },
+    {
+      "code": "zh-CN",
+      "name": "Chinese (Simplified)",
+      "appleId": "zh-Hans",
+      "chineseName": "简体中文"
+    },
+    {
+      "code": "zh-TW",
+      "name": "Chinese (Traditional)",
+      "appleId": "zh-Hant",
+      "chineseName": "繁体中文"
+    },
+    {
+      "code": "ja",
+      "name": "Japanese",
+      "appleId": "ja",
+      "chineseName": "日语"
+    },
+    {
+      "code": "ko",
+      "name": "Korean",
+      "appleId": "ko",
+      "chineseName": "韩语"
+    }
+  ]
+}

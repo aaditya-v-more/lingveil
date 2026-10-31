@@ -110,34 +110,26 @@ enum Action: String, CaseIterable {
     }
 }
 
-struct Language: Hashable, Identifiable {
-    let code: String   // Google-style code
+/// A target language, from shared/languages.json (shared with the Windows app).
+struct Language: Hashable, Identifiable, Decodable {
+    let code: String         // Google-style code
     let name: String
+    let appleId: String      // BCP-47 id for Apple Translation and NaturalLanguage
+    let chineseName: String  // used in Index-Translate prompts
     var id: String { code }
+    var appleID: String { appleId }
 
-    /// Identifier Apple's Translation framework and NaturalLanguage use.
-    var appleID: String {
-        switch code {
-        case "zh-CN": "zh-Hans"
-        case "zh-TW": "zh-Hant"
-        case "iw": "he"
-        default: code
-        }
+    static let all: [Language] = {
+        struct File: Decodable { let languages: [Language] }
+        guard let url = Bundle.main.url(forResource: "languages", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let file = try? JSONDecoder().decode(File.self, from: data) else { fatalError("languages.json missing from the app bundle") }
+        return file.languages
+    }()
+
+    static func named(_ code: String) -> Language {
+        all.first { $0.code == code } ?? Language(code: code, name: code, appleId: code, chineseName: code)
     }
-
-    static let all: [Language] = [
-        ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("it", "Italian"),
-        ("pt", "Portuguese"), ("nl", "Dutch"), ("ru", "Russian"), ("uk", "Ukrainian"), ("pl", "Polish"),
-        ("cs", "Czech"), ("sv", "Swedish"), ("da", "Danish"), ("nb", "Norwegian"), ("fi", "Finnish"),
-        ("el", "Greek"), ("tr", "Turkish"), ("ro", "Romanian"), ("hu", "Hungarian"), ("ar", "Arabic"),
-        ("iw", "Hebrew"), ("fa", "Persian"), ("hi", "Hindi"), ("bn", "Bengali"), ("ur", "Urdu"),
-        ("mr", "Marathi"), ("ta", "Tamil"), ("te", "Telugu"), ("gu", "Gujarati"), ("kn", "Kannada"),
-        ("ml", "Malayalam"), ("pa", "Punjabi"), ("th", "Thai"), ("vi", "Vietnamese"), ("id", "Indonesian"),
-        ("ms", "Malay"), ("tl", "Filipino"), ("zh-CN", "Chinese (Simplified)"), ("zh-TW", "Chinese (Traditional)"),
-        ("ja", "Japanese"), ("ko", "Korean"),
-    ].map { Language(code: $0.0, name: $0.1) }
-
-    static func named(_ code: String) -> Language { all.first { $0.code == code } ?? Language(code: code, name: code) }
 
     static var systemDefault: Language {
         let id = Locale.preferredLanguages.first ?? "en"

@@ -1,0 +1,272 @@
+{
+  "about": "Local translation models offered in Settings > Models. Order is display order: recommended (tested) first. Ratings 1-5; 0 = not rated yet. See bench/BENCHMARKS.md.",
+  "languageSets": {
+    "hy-mt": [
+      "zh-CN",
+      "en",
+      "fr",
+      "pt",
+      "es",
+      "ja",
+      "tr",
+      "ru",
+      "ar",
+      "ko",
+      "th",
+      "it",
+      "de",
+      "vi",
+      "ms",
+      "id",
+      "tl",
+      "hi",
+      "zh-TW",
+      "pl",
+      "cs",
+      "nl",
+      "fa",
+      "gu",
+      "ur",
+      "te",
+      "mr",
+      "iw",
+      "bn",
+      "ta",
+      "uk"
+    ]
+  },
+  "prompts": {
+    "hy-mt": {
+      "endpoint": "chat",
+      "template": "Translate the following text into {target}. Note that you should only output the translated result without any additional explanation:\n\n{text}",
+      "params": {
+        "temperature": 0.2,
+        "top_p": 0.6,
+        "top_k": 20,
+        "repeat_penalty": 1.05
+      }
+    },
+    "index-translate": {
+      "endpoint": "chat",
+      "template": "请将以下文本翻译为{targetChinese}，直接输出翻译结果，不要进行任何解释。\n\n{text}",
+      "params": {
+        "temperature": 0
+      }
+    },
+    "gemma": {
+      "endpoint": "chat",
+      "template": "Translate the following text into {target}. Reply with only the translation, nothing else.\n\n{text}",
+      "params": {
+        "temperature": 0
+      }
+    },
+    "translate-gemma": {
+      "endpoint": "completion",
+      "template": "<start_of_turn>user\nYou are a professional {source} ({sourceCode}) to {target} ({targetCode}) translator. Your goal is to accurately convey the meaning and nuances of the original {source} text while adhering to {target} grammar, vocabulary, and cultural sensitivities.\nProduce only the {target} translation, without any additional explanations or commentary. Please translate the following {source} text into {target}:\n\n\n{text}<end_of_turn>\n<start_of_turn>model\n",
+      "params": {
+        "temperature": 0
+      }
+    }
+  },
+  "server": {
+    "args": [
+      "-c",
+      "8192",
+      "-np",
+      "4",
+      "-ngl",
+      "99",
+      "--jinja",
+      "-fa",
+      "on",
+      "-b",
+      "512",
+      "-ub",
+      "256",
+      "--no-webui",
+      "--log-disable"
+    ],
+    "parallel": 4,
+    "idleStopSeconds": 180,
+    "maxTokens": "min(1024, 4 * characters + 48)",
+    "chatExtra": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      },
+      "cache_prompt": true
+    }
+  },
+  "models": [
+    {
+      "id": "index-translate-2b",
+      "name": "Index-Translate 2B",
+      "maker": "IndexTeam",
+      "summary": "A translation model on Qwen 3.5 covering 150 languages. Close to the most accurate pick, with natural everyday wording.",
+      "repo": "IndexTeam/Index-Translate-2B-GGUF",
+      "file": "Index-Translate-2B.Q4_K_M.gguf",
+      "sha256": "044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a",
+      "bytes": 1310000000,
+      "ramGB": 8,
+      "languages": 150,
+      "prompt": "index-translate",
+      "speed": 4,
+      "accuracy": 4,
+      "recommended": true,
+      "badge": "Best balance",
+      "license": "Apache 2.0",
+      "supported": null
+    },
+    {
+      "id": "hy-mt2-1.8b",
+      "name": "Hy-MT2 1.8B",
+      "maker": "Tencent",
+      "summary": "Built only for translation and the quickest of the three. Wording is more literal and it slips on less common languages.",
+      "repo": "tencent/Hy-MT2-1.8B-GGUF",
+      "file": "Hy-MT2-1.8B-Q4_K_M.gguf",
+      "sha256": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699",
+      "bytes": 1130000000,
+      "ramGB": 8,
+      "languages": 36,
+      "prompt": "hy-mt",
+      "speed": 5,
+      "accuracy": 3,
+      "recommended": true,
+      "badge": "Fastest",
+      "license": "Apache 2.0",
+      "supported": "hy-mt"
+    },
+    {
+      "id": "gemma-4-e2b",
+      "name": "Gemma 4 E2B",
+      "maker": "Google",
+      "summary": "Google's general model. The most accurate in our tests, especially into Hindi, at a bigger download and a little less speed.",
+      "repo": "ggml-org/gemma-4-E2B-it-GGUF",
+      "file": "gemma-4-E2B-it-Q4_0.gguf",
+      "sha256": "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52",
+      "bytes": 2840000000,
+      "ramGB": 8,
+      "languages": 140,
+      "prompt": "gemma",
+      "speed": 3,
+      "accuracy": 5,
+      "recommended": true,
+      "badge": "Most accurate",
+      "license": "Apache 2.0",
+      "supported": null
+    },
+    {
+      "id": "translategemma-4b",
+      "name": "TranslateGemma 4B",
+      "maker": "Google",
+      "summary": "Gemma 3 tuned by the Google Translate team. Strong on long text, slower on short labels.",
+      "repo": "mradermacher/translategemma-4b-it-GGUF",
+      "file": "translategemma-4b-it.Q4_K_M.gguf",
+      "sha256": "81200d03e843d2ec1ece6eeafe7d13cb6e5211e1fcd336ade55790b683a08330",
+      "bytes": 2490000000,
+      "ramGB": 8,
+      "languages": 55,
+      "prompt": "translate-gemma",
+      "speed": 3,
+      "accuracy": 3,
+      "recommended": false,
+      "badge": null,
+      "license": "Gemma",
+      "supported": null
+    },
+    {
+      "id": "gemma-4-e4b",
+      "name": "Gemma 4 E4B",
+      "maker": "Google",
+      "summary": "The larger sibling of Gemma 4 E2B: more fluent and better with idioms, at about half the speed.",
+      "repo": "ggml-org/gemma-4-E4B-it-GGUF",
+      "file": "gemma-4-E4B-it-Q4_0.gguf",
+      "sha256": "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2",
+      "bytes": 4590000000,
+      "ramGB": 16,
+      "languages": 140,
+      "prompt": "gemma",
+      "speed": 2,
+      "accuracy": 4,
+      "recommended": false,
+      "badge": null,
+      "license": "Apache 2.0",
+      "supported": null
+    },
+    {
+      "id": "hy-mt2-7b",
+      "name": "Hy-MT2 7B",
+      "maker": "Tencent",
+      "summary": "The 7B Hy-MT2. Tencent reports it ahead of much larger open models on translation.",
+      "repo": "tencent/Hy-MT2-7B-GGUF",
+      "file": "Hy-MT2-7B-Q4_K_M.gguf",
+      "sha256": "9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b",
+      "bytes": 4620000000,
+      "ramGB": 16,
+      "languages": 36,
+      "prompt": "hy-mt",
+      "speed": 2,
+      "accuracy": 5,
+      "recommended": false,
+      "badge": null,
+      "license": "Apache 2.0",
+      "supported": "hy-mt"
+    },
+    {
+      "id": "index-translate-9b",
+      "name": "Index-Translate 9B",
+      "maker": "IndexTeam",
+      "summary": "The 9B Index-Translate, 150 languages, for Macs with memory to spare.",
+      "repo": "IndexTeam/Index-Translate-9B-GGUF",
+      "file": "Index-Translate-9B.Q4_K_M.gguf",
+      "sha256": "9cc6758b0007f4cbf42ea3400768cbff91ae74ef8d640e467158348426d33713",
+      "bytes": 5780000000,
+      "ramGB": 16,
+      "languages": 150,
+      "prompt": "index-translate",
+      "speed": 2,
+      "accuracy": 5,
+      "recommended": false,
+      "badge": null,
+      "license": "Apache 2.0",
+      "supported": null
+    },
+    {
+      "id": "translategemma-12b",
+      "name": "TranslateGemma 12B",
+      "maker": "Google",
+      "summary": "The 12B TranslateGemma. Very accurate on documents, slow for live use.",
+      "repo": "mradermacher/translategemma-12b-it-GGUF",
+      "file": "translategemma-12b-it.Q4_K_M.gguf",
+      "sha256": "b7aac4b4be7ab0c49b6556c29c4467e74313df7f1e95d9f9676bb2adf0afa528",
+      "bytes": 7300000000,
+      "ramGB": 16,
+      "languages": 55,
+      "prompt": "translate-gemma",
+      "speed": 1,
+      "accuracy": 5,
+      "recommended": false,
+      "badge": null,
+      "license": "Gemma",
+      "supported": null
+    },
+    {
+      "id": "hy-mt2-30b-a3b",
+      "name": "Hy-MT2 30B-A3B",
+      "maker": "Tencent",
+      "summary": "Mixture-of-experts: only 3B of its 30B weights run per word, so it is quick for its quality, but it needs a lot of memory.",
+      "repo": "tencent/Hy-MT2-30B-A3B-GGUF",
+      "file": "Hy-MT2-30B-A3B-Q4_K_M.gguf",
+      "sha256": "bb44b11bb0f7cd3d1321645b41e911cd3de2e473731227fc6bf37aa18b543f88",
+      "bytes": 18240000000,
+      "ramGB": 32,
+      "languages": 36,
+      "prompt": "hy-mt",
+      "speed": 3,
+      "accuracy": 5,
+      "recommended": false,
+      "badge": null,
+      "license": "Apache 2.0",
+      "supported": "hy-mt"
+    }
+  ]
+}
