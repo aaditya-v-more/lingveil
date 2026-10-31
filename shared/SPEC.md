@@ -244,11 +244,12 @@ Windows:
 - Shown position = measured + speed × (frame age + 4 ms), speed from the last two frames'
   display times; when frames stop for 45 ms, settle on the measured position.
 - Re-reading uses the tracked frames themselves (so text and positions come from the same
-  moment): 0.12 s after things stop, and every 0.25 s while scrolling slower than
-  1500 pt/s. Only what isn't followed yet is read: a grid of 32×8 pt cells; a cell needs
+  moment), and only once things stop: no new frame for 60 ms. While the screen moves,
+  nothing is read, recalled from memory or added; the only work is moving what is already
+  translated, so scrolling stays smooth. A read or recall that finishes while the screen is
+  moving again waits until it stops, then appears where its text is by then. Only what isn't followed yet is read: a grid of 32×8 pt cells; a cell needs
   reading if it has edges in it (≥ 4 brightness steps > 28) and no followed box covers it;
-  needed cells are joined into horizontal strips (while scrolling, leave out 10 pt at the
-  top and bottom edges: lines cut there are read when whole). All strips go to the
+  needed cells are joined into horizontal strips. All strips go to the
   recognizer as one stacked image (24 px between strips, padded with each row's last pixel),
   accurate mode, with the page's languages once known (learned from the first full read:
   language guesses > 0.15, plus English). If strips cover > 60% of the area, read it all.
@@ -257,8 +258,7 @@ Windows:
   After 1 s of stillness following partial reads, read the whole area once with
   accessibility (exact text, fonts). Never use Vision's fast mode for this: it can't read
   non-Latin scripts and is worse below ~13 pt (bench/ocr).
-  A still read starts even if a moving one is in flight; results older than what is shown
-  are dropped. Blocks read from an older frame are moved to where their text is now before
+  One read at a time; results older than what is shown are dropped. Blocks read from an older frame are moved to where their text is now before
   they appear.
 - Scrolling back: when a block leaves (scrolled away or changed), keep it with its pixels
   as they were when it was read (up to 300). While text is unread (scrolling slower than

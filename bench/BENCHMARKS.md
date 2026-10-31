@@ -75,7 +75,10 @@ text, Google, Apple silicon, several runs:
 Reading only the strips that are new takes 35–250 ms instead of 300–1000 ms for the window;
 most of the wait for new text is now the translation request itself (120–600 ms to Google).
 At 1500×950 pt (about a full laptop window) following a frame takes 8 ms (3 ms at
-760×620), and the error while scrolling is median 3.8 pt, 90% 15 pt. During a flick (~8000 pt/s) blocks are hidden until the window settles. Text seen before
+760×620), and the error while scrolling is median 3.8 pt, 90% 15 pt. Since reading and translating wait until the screen stops (60 ms without a new frame),
+nothing but moving blocks happens on the main thread while scrolling: the longest gap
+between a frame and its move went from 27–37 ms to 1 ms, and the error while scrolling to
+90% 10–14 pt (760×620) and 6 pt (1500×950). During a flick (~8000 pt/s) blocks are hidden until the window settles. Text seen before
 comes back instantly from the translation cache.
 
 ## Text recognition on screen text

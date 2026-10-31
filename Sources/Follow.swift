@@ -17,14 +17,13 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     private let queue = DispatchQueue(label: "lingveil.follow", qos: .userInteractive)
     nonisolated let tracker: MotionTracker
     private var lastChange = Date.distantPast
-    private var lastRefresh = Date()
     private var dirty = false
     private var loop: Task<Void, Never>?
     private(set) var running = false
     private var settle: Timer?
     private var exact: [CGFloat] = [], previous: [CGFloat] = [], hidden = Set<Int>()
     private var previousTime: Double = 0
-    private var reading = 0, stillReading = false
+    private var reading = 0
     private var shownSequence = -1   // the frame the blocks on screen were read from
     /// What is being followed: the translated blocks, then areas already read that need no
     /// translation (code, numbers, images without text), all as of the current reference.
@@ -44,6 +43,9 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
     private static let predicts = ProcessInfo.processInfo.environment["LINGVEIL_NOPREDICT"] == nil
     private static let drawDelay = (Double(ProcessInfo.processInfo.environment["LINGVEIL_LEAD_MS"] ?? "") ?? 4) / 1000
     private var speed: CGFloat = 0   // points per second, fastest visible block
+    /// No new frame for this long means the screen has stopped moving: a few refreshes, so
+    /// a slow drag that skips a frame doesn't count as stopping.
+    private static let stillAfter: TimeInterval = 0.06
     var onBusy: ((Bool) -> Void)?
     /// Tests only: follow one window directly (captured even when covered) instead of the
     /// screen, with its content starting `windowTop` points below the window's top edge.
@@ -341,22 +343,23 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    /// Reads and translates whatever is new. Only the parts of the frame that aren't
-    /// already followed are read: text scrolled into view, text that changed. That is
-    /// a strip or two while scrolling, so reading takes tens of milliseconds instead of the
-    /// whole window's hundreds. Reads happen every quarter second while scrolling at a
-    /// readable pace and as soon as things stop; once things have been still for a second,
-    /// the whole window is read once more with accessibility (exact text and fonts).
+    /// Reads and translates whatever is new, as soon as the screen stops moving. While it
+    /// moves, nothing is read, recalled or added: the only work is keeping what is already
+    /// translated on its text, so scrolling stays smooth. Only the parts of the frame that
+    /// aren't already followed are read (text scrolled into view, text that changed), so
+    /// reading takes tens of milliseconds instead of the whole window's hundreds. Once
+    /// things have been still for a second, the whole window is read once more with
+    /// accessibility (exact text and fonts).
     private func refreshLoop() async {
         while running, !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(30))
             let stillFor = Date().timeIntervalSince(lastChange)
-            let still = stillFor > 0.12
+            guard stillFor > Self.stillAfter else { continue }
             let polish = !dirty && partialSinceFull && stillFor > 1.0 && Date().timeIntervalSince(lastFullRead) > 1.0
             guard dirty || polish else { continue }
-            // Text coming back into view that was translated before: put it back right away,
-            // at any scrolling speed. Whatever is still unread after that is read below.
-            if dirty, !polish, !recalling, !memory.isEmpty, shownSequence >= 0, speed < 1500, Date().timeIntervalSince(lastRecall) > 0.08,
+            // Text back in view that was translated before: put it back without reading it.
+            // Whatever is still unread after that is read below.
+            if dirty, !polish, !recalling, !memory.isEmpty, shownSequence >= 0, Date().timeIntervalSince(lastRecall) > 0.08,
                let token = tracker.begin(), token.reference == tracker.referenceID {
                 lastRecall = Date()
                 recalling = true
@@ -364,6 +367,9 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
                 // Matching runs off the main thread so following never stalls.
                 Task.detached(priority: .userInitiated) { [area] in
                     let back = Self.recall(strips, token, mem, area: area)
+                    while await MainActor.run(body: { self.running && Date().timeIntervalSince(self.lastChange) <= Self.stillAfter }) {
+                        try? await Task.sleep(for: .milliseconds(8))
+                    }
                     await MainActor.run {
                         self.recalling = false
                         guard !back.isEmpty, self.running, token.reference == self.tracker.referenceID, token.sequence > self.shownSequence else { return }
@@ -378,35 +384,24 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
                     }
                 }
             }
-            if still {
-                // Once things stop, read right away, even if a read from mid-scroll is still
-                // under way (its result will be older and is dropped).
-                guard !stillReading else { continue }
-            } else {
-                // While moving, only slow scrolling is worth reading: after a flick the frame
-                // is out of date long before its text is.
-                guard reading == 0, Date().timeIntervalSince(lastRefresh) > 0.25, speed < 1500 else { continue }
-            }
+            guard reading == 0 else { continue }
             dirty = false
-            lastRefresh = Date()
             guard let token = tracker.begin(), let pixels = token.pixels else { Debug.log("follow: no frame to read"); continue }
             let snap = Snapshot(pixels: pixels, frame: area, scale: CGFloat(tracker.scale))
             // Read only what's new, unless nothing is followed yet, it's time for the full
             // read, or most of the window is new anyway.
             var strips: [CGRect]? = nil
             if !polish, shownSequence >= 0, token.reference == tracker.referenceID {
-                strips = unread(token, edges: !still)
+                strips = unread(token, edges: false)
                 if let st = strips, st.reduce(0, { $0 + $1.width * $1.height }) > area.width * area.height * 0.6 { strips = nil }
             }
             if strips?.isEmpty == true { continue }   // everything in view is already followed
             let full = strips == nil
             reading += 1
-            if still { stillReading = true }
             onBusy?(true)
             Task {
                 defer {
                     reading -= 1
-                    if still { stillReading = false }
                     onBusy?(reading > 0)
                 }
                 let t0 = Date()
@@ -416,9 +411,7 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
                 if let strips {
                     items = await read(strips, in: snap)
                 } else {
-                    // Accessibility reports where text is now, which only matches the frame if
-                    // the screen is still.
-                    items = await Pipeline.items(in: snap, app: app, accessibility: still)
+                    items = await Pipeline.items(in: snap, app: app)
                 }
                 let tOCR = Date().timeIntervalSince(t0)
                 if full { learnLanguages(items) }
@@ -427,6 +420,9 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
                     Debug.log("follow refresh failed: \(error.localizedDescription) (\(items.count) items)")
                     return
                 }
+                // Scrolling started again while this was read: keep it until it stops, then
+                // show it where its text is by then.
+                while running, Date().timeIntervalSince(lastChange) <= Self.stillAfter { try? await Task.sleep(for: .milliseconds(8)) }
                 guard running, token.sequence > shownSequence else { return }
                 var newKnown = Self.untranslated(items, fresh).map(local)
                 if let strips {
@@ -443,7 +439,7 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
                     }
                     allKnown += keptKnown
                 }
-                Debug.log(String(format: "follow %@ %d new blocks (%d kept) from %@ in %.0f ms (reading %.0f)", still ? "still" : "moving", fresh.count, all.count - fresh.count,
+                Debug.log(String(format: "follow %d new blocks (%d kept) from %@ in %.0f ms (reading %.0f)", fresh.count, all.count - fresh.count,
                                  strips.map { "\($0.count) strips, \(Int($0.reduce(0) { $0 + $1.height })) pt tall" } ?? "whole window", Date().timeIntervalSince(t0) * 1000, tOCR * 1000))
                 if adopt(all, known: allKnown, token) {
                     shownSequence = token.sequence
