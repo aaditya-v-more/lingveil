@@ -173,7 +173,11 @@ Windows:
 - Windows OCR runs one engine per language and needs that language's OCR pack. The app
   lists installed packs, recognizes with the packs for the languages the user reads, and
   offers to install missing ones (Add-WindowsCapability `Language.OCR~~~<tag>~0.0.1.0`,
-  which asks for admin rights).
+  which asks for admin rights). Settings has a "Languages I read on screen" list with each
+  pack's state. All listed, installed engines run in parallel; where their boxes overlap,
+  keep the result whose script matches the engine's language, else the one with more
+  letters. If nothing is found while a listed language lacks its pack, the pill says to
+  install that language's text recognition instead of "Nothing to translate".
 - "Already in the target language" uses script share (> 80% of letters) for non-Latin
   targets; Latin/Cyrillic targets rely on Google's detected language.
 - Fitting: fallback fonts (Nirmala UI, Yu Gothic) have tall line metrics, so a block also
