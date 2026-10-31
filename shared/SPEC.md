@@ -24,6 +24,8 @@ global space; Windows works in physical pixels divided by the monitor's scale.
 | Under pointer | ⌥⇧D / Alt+Shift+D | Card with the translation of the paragraph under the pointer (original underneath, Copy button). |
 | Selection | ⌥⇧S / Alt+Shift+S | Card with the translation of the selected text in the front app. |
 | Hover | hold ⌥ / Alt (opt-in) | Pointer resting ~0.3 s over text shows the pointer card. |
+| Read aloud | ⌥⇧R / Alt+Shift+R | Reads, in order of preference: the translation showing (in reading order, outlining each block), the selected text, or the front window's text in reading order (title bar skipped). Same shortcut or Esc stops. |
+| Translate and read aloud | ⌥⇧E / Alt+Shift+E | Selection → translate, show the card and read the translation. Otherwise translate the front window in place, then read it as above. |
 
 While a screen/area translation is showing: hold ⌥/Alt to hide it (peek at the original),
 resting on a block for 0.7 s shows its original as a tooltip, right-click offers Copy
@@ -220,6 +222,53 @@ Windows:
   laptops with switchable AMD + NVIDIA graphics an implicit Vulkan layer hangs startup forever.
 - UI Automation gives element frames, not glyph bounds or fonts, so UIA items take their box,
   line count and size from the OCR lines inside them (same rule as 2.4).
+
+### 2.13 Web pages (toggle "Translate web pages by paragraph", default on)
+- Applies to text inside any web area (every browser, and web-based apps), detected from
+  the accessibility tree, not by app name. Accessibility budget 600 ms instead of 350.
+- Each text run remembers its nearest paragraph-level ancestor: walking down from the web
+  area, every element that is not inline (link, static text, emphasis, strong, mark, code)
+  starts a new block. Consecutive runs of the same block are joined into one item (one
+  translation) when they share a line (vertical overlap > 0.3 line) and follow on closely
+  (horizontal gap < 1.5 lines). Join with a space unless one side already has one or the
+  next starts with `, . ; : ! ? )`. Stacked labels and right-hand badges stay separate.
+
+### 2.14 Read aloud
+- Segments: (text, on-screen box, language). Order with an XY-cut: split into columns where
+  a vertical gap > 18 pt runs the full height, except when the two sides line up row by row
+  (≥ 60% of left boxes have a right partner at the same height: a form); otherwise split
+  into stacked groups at horizontal gaps > 2 pt; a single row reads left to right.
+- Outline the segment being read: on the translation overlay, a 2 pt accent outline around
+  its block; for original text, a click-through outline window with a 10% accent tint.
+- Engines (Settings → Voices): the OS voices (Mac: AVSpeechSynthesizer, best installed
+  voice per language: Premium > Enhanced > default, user choice per language; Windows:
+  Windows.Media.SpeechSynthesis / OneCore, including natural voices), or a plugin from
+  `engines.json` (same format as Earmark): `{name, url | command, voices, speed: "engine" |
+  "player", start}`. HTTP: POST `{text, voice, rate}` → WAV; `voices` URL lists
+  `[{id, name, language, gender}]`; `start` runs once if the server can't be reached.
+  Fetch the next segment's audio while the current one plays. Lines in a language the
+  plugin has no voice for fall back to the OS voice. With OS voices, lines in a language
+  with no installed voice are skipped with a one-time hint on how to add one.
+- Speed 0.5–3× (1 = normal). The cards get a speaker button.
+- Google voices: Settings → Voices → Install runs google-tts-local's installer
+  (Mac: Homebrew formula; Windows: its Windows build when ready) and adds a "Google" plugin
+  pointing at 127.0.0.1:5591.
+
+### 2.15 Tutorial and tips
+- First launch: a 7-page tour (welcome + permissions with live status, translate, read
+  aloud, translate and read, cards, live, offline models; last page links Ko-fi). Replay
+  from the menu ("Show Tutorial") and Settings → General (which also re-arms the tips).
+- One-time tips (HUD at the bottom, 7 s, never twice): first overlay, first reading, first
+  card, first live session.
+
+### 2.16 Support (Ko-fi: https://ko-fi.com/aadityavmore)
+- Menu item "Support Lingveil on Ko-fi…", a ♥ Donate button in the Settings window's title
+  bar (right), About credits, the tour's last page, and a card after an update ("Lingveil
+  was updated to X").
+- Reminder card (bottom-right, never takes focus): only after 30+ uses on 5+ different days
+  and 14+ days after first use, shown 1.5 s after a translation closes or reading ends,
+  then not again for 30 days. Buttons: Support on Ko-fi, Not Now, Don't show for 2 months
+  (60 days).
 
 ## 3. Resources and memory
 - Idle app: tens of MB. OCR models (~120 MB on Mac) live in a helper process that exits
