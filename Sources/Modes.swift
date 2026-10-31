@@ -50,7 +50,7 @@ final class OneShot {
                 let snap = try await Capture.snapshot(screen, rect: rect)
                 let captureMs = Date().timeIntervalSince(tc) * 1000
                 let items = await Pipeline.items(in: snap, app: app)
-                let blocks = try await Pipeline.blocks(for: items, in: snap, to: target) { partial in
+                let blocks = try await Pipeline.blocks(for: items, in: snap, to: target, focus: Pipeline.frontWindowFrame(of: app)) { partial in
                     guard self.window === w else { return }
                     slow.cancel(); w.view.status = nil; w.view.blocks = partial
                 }
@@ -322,9 +322,14 @@ final class Bubble {
     func underPointer(quiet: Bool = false) {
         let p = Debug.point ?? NSEvent.mouseLocation
         Debug.point = nil
+        if !quiet { close() }
         Task {
             var found: (String, CGRect?)?
-            if Prefs.useAccessibility, AXText.trusted, let el = AXText.element(at: p) { found = AXText.text(of: el) }
+            if Prefs.useAccessibility, AXText.trusted, let el = AXText.element(at: p) {
+                var pid: pid_t = 0
+                AXUIElementGetPid(el, &pid)
+                if pid != getpid() { found = AXText.paragraph(in: el, at: p) ?? AXText.text(of: el) }
+            }
             if found == nil {
                 guard Permissions.ensureScreenCapture() else { return }
                 let screen = NSScreen.underMouse

@@ -21,6 +21,7 @@ struct LocalModel: Identifiable, Hashable {
     let accuracy: Int        // 1-5, measured against reference translations
     let recommended: Bool    // tested and suggested for most Macs
     let license: String
+    var badge: String? = nil  // what it is best at, shown on recommended models
     var supported: Set<String>? = nil   // Google-style codes; nil = everything in Language.all
 
     var url: URL { URL(string: "https://huggingface.co/\(repo)/resolve/main/\(file)")! }
@@ -32,22 +33,24 @@ struct LocalModel: Identifiable, Hashable {
 
     /// Ordered as shown: tested recommendations first, then everything else by size.
     static let catalog: [LocalModel] = [
+        LocalModel(id: "index-translate-2b", name: "Index-Translate 2B", maker: "IndexTeam",
+                   summary: "A translation model on Qwen 3.5 covering 150 languages. Close to the most accurate pick, with natural everyday wording.",
+                   repo: "IndexTeam/Index-Translate-2B-GGUF", file: "Index-Translate-2B.Q4_K_M.gguf",
+                   sha256: "044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a", bytes: 1_310_000_000,
+                   ramGB: 8, languages: 150, prompt: .indexTranslate, speed: 4, accuracy: 4, recommended: true, license: "Apache 2.0",
+                   badge: "Best balance"),
         LocalModel(id: "hy-mt2-1.8b", name: "Hy-MT2 1.8B", maker: "Tencent",
-                   summary: "Built only for translation. The quickest local model that stays reliable on short labels and long paragraphs alike.",
+                   summary: "Built only for translation and the quickest of the three. Wording is more literal and it slips on less common languages.",
                    repo: "tencent/Hy-MT2-1.8B-GGUF", file: "Hy-MT2-1.8B-Q4_K_M.gguf",
                    sha256: "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699", bytes: 1_130_000_000,
                    ramGB: 8, languages: 36, prompt: .hyMT, speed: 5, accuracy: 3, recommended: true, license: "Apache 2.0",
-                   supported: hyMTLanguages),
-        LocalModel(id: "index-translate-2b", name: "Index-Translate 2B", maker: "IndexTeam",
-                   summary: "A newer translation model on Qwen 3.5 covering 150 languages. A little slower than Hy-MT2 1.8B and more accurate.",
-                   repo: "IndexTeam/Index-Translate-2B-GGUF", file: "Index-Translate-2B.Q4_K_M.gguf",
-                   sha256: "044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a", bytes: 1_310_000_000,
-                   ramGB: 8, languages: 150, prompt: .indexTranslate, speed: 4, accuracy: 4, recommended: true, license: "Apache 2.0"),
+                   badge: "Fastest", supported: hyMTLanguages),
         LocalModel(id: "gemma-4-e2b", name: "Gemma 4 E2B", maker: "Google",
-                   summary: "A general assistant model that translates naturally, keeps names and tone, and handles casual chat well. Bigger download.",
+                   summary: "Google's general model. The most accurate in our tests, especially into Hindi, at a bigger download and a little less speed.",
                    repo: "ggml-org/gemma-4-E2B-it-GGUF", file: "gemma-4-E2B-it-Q4_0.gguf",
                    sha256: "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52", bytes: 2_840_000_000,
-                   ramGB: 8, languages: 140, prompt: .gemma, speed: 3, accuracy: 4, recommended: true, license: "Apache 2.0"),
+                   ramGB: 8, languages: 140, prompt: .gemma, speed: 3, accuracy: 5, recommended: true, license: "Apache 2.0",
+                   badge: "Most accurate"),
 
         LocalModel(id: "translategemma-4b", name: "TranslateGemma 4B", maker: "Google",
                    summary: "Gemma 3 tuned by the Google Translate team. Strong on long text, slower on short labels.",
@@ -220,11 +223,26 @@ actor LlamaServer {
         return FileManager.default.isExecutableFile(atPath: u.path) ? u : nil
     }
 
-    /// Base URL of a server running `m`, starting it if needed.
+    private var starting: Task<URL, Error>?
+    private var failedAt: [String: Date] = [:]
+
+    /// Base URL of a server running `m`, starting it if needed. Concurrent callers share
+    /// one start; a model that failed to start isn't retried for half a minute.
     func endpoint(for m: LocalModel) async throws -> URL {
         lastUse = Date()
-        if let p = process, p.isRunning, modelID == m.id { return URL(string: "http://127.0.0.1:\(port)")! }
+        if let p = process, p.isRunning, modelID == m.id, starting == nil { return URL(string: "http://127.0.0.1:\(port)")! }
+        if let t = starting, modelID == m.id { return try await t.value }
+        if let f = failedAt[m.id], Date().timeIntervalSince(f) < 30 { throw LingveilError.message("\(m.name) could not start") }
         stopNow()
+        modelID = m.id
+        let t = Task { try await launch(m) }
+        starting = t
+        defer { starting = nil }
+        do { return try await t.value }
+        catch { failedAt[m.id] = Date(); stopNow(); throw error }
+    }
+
+    private func launch(_ m: LocalModel) async throws -> URL {
         guard let bin = Self.binary else { throw LingveilError.message("Local models need an Apple silicon Mac") }
         let file = await MainActor.run { ModelStore.shared.path(m) }
         guard FileManager.default.fileExists(atPath: file.path) else {
@@ -232,15 +250,20 @@ actor LlamaServer {
         }
         port = Self.freePort()
         let p = Process()
-        p.executableURL = bin
-        p.arguments = ["-m", file.path, "--host", "127.0.0.1", "--port", String(port),
+        // Started through this app's guard (see ChildGuard), which ends the server if
+        // Lingveil quits or crashes, so a model is never left holding memory.
+        p.executableURL = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
+        p.arguments = ["--child-guard", bin.path, "-m", file.path, "--host", "127.0.0.1", "--port", String(port),
                        "-c", "8192", "-np", "4", "-ngl", "99", "--jinja", "-fa", "on",
+                       // Small GPU work units keep window drawing smooth while it runs.
+                       "-b", "512", "-ub", "256",
                        "--no-webui", "--log-disable", "-t", String(max(2, ProcessInfo.processInfo.activeProcessorCount / 2))]
+        p.qualityOfService = .utility
+        p.standardInput = Pipe()
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         try p.run()
         process = p
-        modelID = m.id
         let base = URL(string: "http://127.0.0.1:\(port)")!
         // Wait for the model to load (a few seconds the first time).
         for _ in 0..<300 {
@@ -249,8 +272,17 @@ actor LlamaServer {
                (r as? HTTPURLResponse)?.statusCode == 200 { armIdleStop(); return base }
             try await Task.sleep(for: .milliseconds(100))
         }
-        stopNow()
         throw LingveilError.message("\(m.name) could not start")
+    }
+
+    /// Ends servers left behind by an earlier run of this app.
+    nonisolated static func cleanUpStale() {
+        guard let bin = binary else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        p.arguments = ["-f", bin.path]
+        try? p.run()
+        p.waitUntilExit()
     }
 
     func touch() { lastUse = Date() }
@@ -259,6 +291,7 @@ actor LlamaServer {
 
     private func stopNow() {
         idleTask?.cancel(); idleTask = nil
+        starting?.cancel(); starting = nil
         process?.terminate()
         process = nil; modelID = nil
     }

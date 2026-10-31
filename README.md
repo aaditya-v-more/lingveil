@@ -21,11 +21,19 @@ While a translation is showing, hold ⌥ to see the original, rest the pointer o
 - **Text**: the frontmost app's Accessibility tree gives the exact strings, frames and fonts of its labels and messages. On-device OCR (Apple Vision) runs at the same time, confirms the text is visible and picks up everything Accessibility can't reach: images, video, games, canvas apps.
 - **Look**: background and text colors are sampled from the pixels around and inside each piece of text (gradients included), font size comes from the original's measured width, and the translation is fitted into the original's box.
 - **Translation engines**:
-  - Automatic (default): Google Translate, with no key or account, falling back to Apple's on-device translation when offline.
-  - Apple on-device: fully offline once a language pair is downloaded (Settings → Engines).
-  - Your own Google Cloud or DeepL API key.
-  - Ollama, for a local model of your choice.
-- **Light on memory**: OCR runs in a helper process that quits after 90 seconds idle, so between uses the app holds only a few tens of MB. Live mode uses a ScreenCaptureKit stream that only delivers frames when pixels change.
+  - Automatic (default): Google Translate, with no key or account; offline it switches to your local model, or to Apple's.
+  - Local models, downloaded from Settings → Models and run on this Mac through a bundled llama.cpp server. Nothing needs installing. Tested picks for 8 GB Macs:
+
+    | Model | Download | Speed | Accuracy |
+    | --- | --- | --- | --- |
+    | Index-Translate 2B (best balance, default) | 1.3 GB | ●●●●○ | ●●●●○ |
+    | Hy-MT2 1.8B (fastest) | 1.1 GB | ●●●●● | ●●●○○ |
+    | Gemma 4 E2B (most accurate) | 2.8 GB | ●●●○○ | ●●●●● |
+
+    Larger models (Hy-MT2 7B, Index-Translate 9B, TranslateGemma 4B/12B, Gemma 4 E4B, Hy-MT2 30B-A3B) are listed too, with the memory they need. Method and numbers: [bench/BENCHMARKS.md](bench/BENCHMARKS.md).
+  - Apple Translation: the models built into macOS (high quality, or the fast ones on macOS 26.4+), downloaded per language pair.
+  - Your own Google Cloud or DeepL API key, or Ollama / another local server.
+- **Light on memory**: OCR runs in a helper process that quits after 90 seconds idle, and a local model's server stops after 3 idle minutes or when macOS is short of memory, so between uses the app holds only a few tens of MB. Live mode only re-reads the area when its pixels change.
 
 ## Build
 
@@ -34,4 +42,4 @@ While a translation is showing, hold ⌥ to see the original, rest the pointer o
 ARCHS=arm64 ./build.sh
 ```
 
-Requires macOS 15 or later. The app asks for Screen Recording (required) and Accessibility (optional, for exact app text and translating selections).
+Requires macOS 15 or later; local models need Apple silicon. `build.sh` builds llama.cpp's server from `../llama.cpp` (or `LLAMA_CPP_DIR`) the first time. The app asks for Screen Recording (required) and Accessibility (optional, for exact app text and translating selections).

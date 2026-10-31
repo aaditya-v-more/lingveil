@@ -237,6 +237,35 @@ enum AXText {
         return AXUIElementCopyElementAtPosition(sys, Float(q.x), Float(q.y), &el) == .success ? el : nil
     }
 
+    /// The paragraph under `p` (AppKit coordinates) inside a text view, so pointing at one
+    /// line of a long document translates that paragraph rather than the whole document.
+    static func paragraph(in e: AXUIElement, at p: CGPoint) -> (String, CGRect?)? {
+        guard let value: String = attr(e, kAXValueAttribute), value.contains(where: \.isNewline) else { return nil }
+        var q = Coords.toQuartz(p)
+        guard let pv = AXValueCreate(.cgPoint, &q) else { return nil }
+        var out: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(e, kAXRangeForPositionParameterizedAttribute as CFString, pv, &out) == .success,
+              let rv = out, CFGetTypeID(rv) == AXValueGetTypeID() else { return nil }
+        var r = CFRange()
+        guard AXValueGetValue(rv as! AXValue, .cfRange, &r) else { return nil }
+        let ns = value as NSString
+        guard r.location >= 0, r.location < ns.length else { return nil }
+        let para = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
+        let text = ns.substring(with: para).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        var range = CFRange(location: para.location, length: para.length)
+        var frame: CGRect?
+        if let rr = AXValueCreate(.cfRange, &range) {
+            var b: CFTypeRef?
+            if AXUIElementCopyParameterizedAttributeValue(e, kAXBoundsForRangeParameterizedAttribute as CFString, rr, &b) == .success,
+               let bv = b, CFGetTypeID(bv) == AXValueGetTypeID() {
+                var rect = CGRect.zero
+                if AXValueGetValue(bv as! AXValue, .cgRect, &rect) { frame = Coords.fromQuartz(rect) }
+            }
+        }
+        return (String(text.prefix(2000)), frame)
+    }
+
     /// Text of an element, or of its static-text children for groups like table cells.
     static func text(of e: AXUIElement) -> (String, CGRect?)? {
         for key in [kAXValueAttribute, kAXTitleAttribute] {
@@ -247,11 +276,22 @@ enum AXText {
         return parts.isEmpty ? nil : (parts.joined(separator: " "), frame(e))
     }
 
+    /// Selected text in the frontmost app (asked of the app itself, which is more reliable
+    /// than the system-wide focus), falling back to the system-wide focused element.
     static func selectedText() -> String? {
-        let sys = AXUIElementCreateSystemWide()
-        guard let focused: AXUIElement = attr(sys, kAXFocusedUIElementAttribute) else { return nil }
-        let s: String? = attr(focused, kAXSelectedTextAttribute)
-        return s?.isEmpty == false ? s : nil
+        var owners: [AXUIElement] = []
+        if let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != getpid() {
+            owners.append(AXUIElementCreateApplication(app.processIdentifier))
+        }
+        owners.append(AXUIElementCreateSystemWide())
+        for o in owners {
+            AXUIElementSetMessagingTimeout(o, 0.3)
+            if let focused: AXUIElement = attr(o, kAXFocusedUIElementAttribute),
+               let s: String = attr(focused, kAXSelectedTextAttribute), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return s
+            }
+        }
+        return nil
     }
 
     // MARK: helpers

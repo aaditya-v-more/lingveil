@@ -39,7 +39,7 @@ enum Prefs {
         set { d.set(newValue, forKey: "deeplKey") }
     }
     static var localModel: String {
-        get { ProcessInfo.processInfo.environment["LINGVEIL_LOCAL_MODEL"] ?? d.string(forKey: "localModel") ?? "hy-mt2-1.8b" }
+        get { ProcessInfo.processInfo.environment["LINGVEIL_LOCAL_MODEL"] ?? d.string(forKey: "localModel") ?? "index-translate-2b" }
         set { d.set(newValue, forKey: "localModel") }
     }
     /// Apple's smaller on-device models (macOS 26.4+): much faster, a little less polished.

@@ -99,6 +99,23 @@ enum Debug {
                     let v = parts[1].split(separator: ",").compactMap { Double($0) }
                     if v.count == 4 { rect = CGRect(x: v[0], y: v[1], width: v[2], height: v[3]); point = rect!.origin }
                 }
+                if name == "download", parts.count > 1, let m = LocalModel.named(parts[1]) {
+                    // Runs the real downloader and logs progress every few seconds.
+                    ModelStore.shared.delete(m)
+                    ModelStore.shared.download(m)
+                    let t0 = Date()
+                    Task {
+                        while true {
+                            try? await Task.sleep(for: .seconds(5))
+                            let st = ModelStore.shared
+                            Debug.log(String(format: "download %@ %.0f s progress=%@ verifying=%@ installed=%@ error=%@", m.id, Date().timeIntervalSince(t0),
+                                             st.progress[m.id].map { String(format: "%.2f", $0) } ?? "-", String(st.verifying.contains(m.id)),
+                                             String(st.isInstalled(m)), st.errors[m.id] ?? "-"))
+                            if st.isInstalled(m) || st.errors[m.id] != nil { break }
+                        }
+                    }
+                    return
+                }
                 if name == "dump" {
                     let blocks = Live.shared.debugView?.blocks ?? []
                     let log = blocks.map { "\($0.item.text.prefix(40)) -> \($0.translation.prefix(60))" }.joined(separator: "\n")
@@ -121,7 +138,7 @@ enum Debug {
                     }
                     for _ in 0..<120 where !done() { try? await Task.sleep(for: .milliseconds(50)) }
                     var log = String(format: "ready after %.0f ms\n", Date().timeIntervalSince(t0) * 1000)
-                    for _ in 0..<40 where (a == .screen || a == .area) && !Pipeline.timings.contains("translate") { try? await Task.sleep(for: .milliseconds(50)) }
+                    for _ in 0..<600 where (a == .screen || a == .area) && !Pipeline.timings.contains("translate") { try? await Task.sleep(for: .milliseconds(50)) }
                     log += Pipeline.timings + "\n"
                     let blocks = (a == .live ? Live.shared.debugView : OneShot.shared.debugView)?.blocks ?? []
                     for b in blocks {

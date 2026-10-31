@@ -39,18 +39,30 @@ enum Pipeline {
     /// or with nothing to translate (numbers, symbols), are left out so the original shows.
     /// Work goes out in batches; `progress` receives everything finished so far as each
     /// batch lands, so most of the screen is painted before the slowest reply arrives.
-    static func blocks(for items: [TextItem], in snap: Snapshot, to target: Language,
+    static func blocks(for items: [TextItem], in snap: Snapshot, to target: Language, focus: CGRect? = nil,
                        progress: (@MainActor ([Block]) -> Void)? = nil) async throws -> [Block] {
         let todo = items.filter { $0.hasLetters && !$0.isLiteral && !Detect.isAlready($0.text, in: target) }
         guard !todo.isEmpty else { return [] }
         let t0 = Date()
-        // Top of the screen first, so the first batch to land is what the eye reads first.
-        let ordered = todo.sorted { $0.rect.maxY > $1.rect.maxY }
-        let batches = stride(from: 0, to: ordered.count, by: 30).map { Array(ordered[$0..<min($0 + 30, ordered.count)]) }
+        // The window being worked in first, then top to bottom, so what the eye is on lands first.
+        let ordered = todo.sorted { a, b in
+            let fa = focus?.intersects(a.rect) ?? false, fb = focus?.intersects(b.rect) ?? false
+            return fa != fb ? fa : a.rect.maxY > b.rect.maxY
+        }
+        // Network engines answer a batch at once; local models work line by line, so smaller
+        // batches let the first lines appear while the rest are still being translated.
+        let network = [.google, .googleCloud, .deepl].contains(Prefs.engine)
+        let size = network ? 30 : 8
+        // Online batches all go out at once; on-device engines are already busy with one batch
+        // (they run lines in parallel inside it), so their batches go one after another.
+        let concurrent = network ? Int.max : 1
+        let batches = stride(from: 0, to: ordered.count, by: size).map { Array(ordered[$0..<min($0 + size, ordered.count)]) }
         var done: [Block] = []
         var firstError: Error?
         await withTaskGroup(of: Result<[Block], Error>.self) { g in
-            for batch in batches {
+            var pending = batches[...]
+            func addNext() {
+                guard let batch = pending.popFirst() else { return }
                 g.addTask {
                     do {
                         let translated = try await Translation.translate(batch.map(\.text), to: target)
@@ -63,7 +75,9 @@ enum Pipeline {
                     } catch { return .failure(error) }
                 }
             }
+            for _ in 0..<min(concurrent, batches.count) { addNext() }
             for await r in g {
+                addNext()
                 switch r {
                 case .success(let b):
                     done += b
@@ -111,6 +125,19 @@ enum Pipeline {
         let o = original.first { $0.isLetter }
         if let o, o.isUppercase || o.isLowercase { return o.isUppercase ? f.uppercased() + t.dropFirst() : t }
         return f.uppercased() + t.dropFirst()
+    }
+
+    /// Frame (AppKit coordinates) of the frontmost window of `app`, from the window server.
+    static func frontWindowFrame(of app: NSRunningApplication?) -> CGRect? {
+        guard let pid = app?.processIdentifier,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+        for w in list where (w[kCGWindowOwnerPID as String] as? pid_t) == pid && (w[kCGWindowLayer as String] as? Int) == 0 {
+            if let b = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b as CFDictionary) {
+                return Coords.fromQuartz(r)
+            }
+        }
+        return nil
     }
 
     static var frontApp: NSRunningApplication? {

@@ -67,6 +67,7 @@ struct ModelsView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(model.name).font(.headline)
                 Text(model.maker).foregroundStyle(.secondary)
+                if let b = model.badge { Tag(text: b, color: .green) }
                 if selected && installed { Tag(text: "In use", color: .accentColor) }
                 Spacer()
                 actions(model, installed: installed, selected: selected)
@@ -131,8 +132,9 @@ struct ModelsView: View {
                           : "The same models as the Translate app. Polished wording, but a full screen of text can take several seconds.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack(spacing: 18) {
-                    Rating(label: "Speed", value: fast ? 4 : 1)
-                    Rating(label: "Accuracy", value: fast ? 3 : 4)
+                    // The fast models haven't been through our tests yet (they need a per-pair download).
+                    Rating(label: "Speed", value: fast ? 0 : 1)
+                    Rating(label: "Accuracy", value: fast ? 0 : 4)
                     Text("Built in · runs outside Lingveil · ~20 languages").font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -147,14 +149,16 @@ struct Rating: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(label).font(.caption).foregroundStyle(.secondary)
+            if value == 0 { Text("not rated yet").font(.caption).foregroundStyle(.tertiary) } else {
             HStack(spacing: 2) {
                 ForEach(1...5, id: \.self) { i in
                     Capsule().fill(i <= value ? Color.accentColor : Color.secondary.opacity(0.25)).frame(width: 9, height: 5)
                 }
             }
+            }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label) \(value) out of 5")
+        .accessibilityLabel(value == 0 ? "\(label) not rated yet" : "\(label) \(value) out of 5")
     }
 }
 
