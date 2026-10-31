@@ -206,8 +206,10 @@ final class OverlayView: NSView {
         }
         let band = orig.insetBy(dx: 0, dy: orig.height * 0.25)
         let inRow = others.filter { $0.minY < band.maxY && $0.maxY > band.minY }
-        let freeRight = min(a.right, inRow.filter { $0.minX >= orig.maxX - 1 }.map { $0.minX - orig.maxX - 2 }.min() ?? .infinity, bounds.width - orig.maxX)
-        let freeLeft = min(a.left, inRow.filter { $0.maxX <= orig.minX + 1 }.map { orig.minX - $0.maxX - 2 }.min() ?? .infinity, orig.minX)
+        // A gap shared with a neighbour in the same row is split in half, so two labels that
+        // both widen (menu bars, toolbars) can't run into each other.
+        let freeRight = min(a.right, inRow.filter { $0.minX >= orig.maxX - 1 }.map { ($0.minX - orig.maxX) / 2 - 1 }.min() ?? .infinity, bounds.width - orig.maxX)
+        let freeLeft = min(a.left, inRow.filter { $0.maxX <= orig.minX + 1 }.map { (orig.minX - $0.maxX) / 2 - 1 }.min() ?? .infinity, orig.minX)
         var size = min(base.pointSize, cap ?? .infinity)
         var textRect = orig
         var s = attr(size)
@@ -238,7 +240,8 @@ final class OverlayView: NSView {
             while height(s) > orig.height + room, size > max(7, base.pointSize * 0.55) { size -= 0.5; s = attr(size) }
             let h = min(height(s), orig.height + room)
             // Paragraphs start at the original first line.
-            textRect = CGRect(x: orig.minX, y: orig.maxY - h, width: orig.width, height: h)
+            // A little slack below: line fragments can need a point more than measured.
+            textRect = CGRect(x: orig.minX, y: orig.maxY - h - 3, width: orig.width, height: h + 3)
         }
 
         // Background: the text area plus padding that stops at any border around it.

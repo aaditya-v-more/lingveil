@@ -10,6 +10,7 @@ struct TextItem {
     var font: NSFont?            // known only for Accessibility text
     var size: CGFloat?           // estimated point size for OCR text
     var glyphHeight: CGFloat?    // median height of the single OCR lines a paragraph was merged from
+    var linesWidth: CGFloat?     // summed width of those lines
     var align: NSTextAlignment = .left
     var fromAX = false
 
@@ -137,7 +138,7 @@ enum OCR {
             used[i] = true
             var block = sorted[i]
             var last = sorted[i]
-            var lefts = [last.rect.minX], centers = [last.rect.midX], heights = [last.rect.height]
+            var lefts = [last.rect.minX], centers = [last.rect.midX], heights = [last.rect.height], widths = [last.rect.width]
             var j = i + 1
             while j < sorted.count {
                 if used[j] { j += 1; continue }
@@ -158,12 +159,13 @@ enum OCR {
                     block.text += joiner + n.text
                     block.rect = block.rect.union(n.rect)
                     block.lines += 1
-                    lefts.append(n.rect.minX); centers.append(n.rect.midX); heights.append(n.rect.height)
+                    lefts.append(n.rect.minX); centers.append(n.rect.midX); heights.append(n.rect.height); widths.append(n.rect.width)
                     last = n
                 }
                 j += 1
             }
             block.glyphHeight = heights.sorted()[heights.count / 2]
+            block.linesWidth = widths.reduce(0, +)
             if block.lines > 1 {
                 let leftSpread = (lefts.max()! - lefts.min()!), centerSpread = (centers.max()! - centers.min()!)
                 if centerSpread < leftSpread * 0.5 { block.align = .center }

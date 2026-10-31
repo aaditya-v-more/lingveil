@@ -123,7 +123,12 @@ enum Pipeline {
             // which includes the app's line spacing.
             let byHeight = (it.lines > 1 ? (it.glyphHeight ?? it.lineHeight / 1.2) : it.lineHeight) * 0.8
             var size = byHeight
-            if it.lines == 1, it.text.count >= 4 {
+            if it.lines > 1 {
+                // Paragraph: the width its text takes, summed over its lines.
+                let w = (it.text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 20)]).width
+                let filled = it.linesWidth ?? it.rect.width * (CGFloat(it.lines) - 0.4)
+                if w > 0 { size = min(max(20 * filled / w, byHeight * 0.6), byHeight * 1.1) }
+            } else if it.text.count >= 4 {
                 // Width is steadier than height (which swings with ascenders and descenders).
                 let w = (it.text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 20)]).width
                 if w > 0 { size = min(max(20 * it.rect.width / w, byHeight * 0.6), byHeight * 1.4) }
@@ -131,12 +136,14 @@ enum Pipeline {
             it.size = max(7, size)
             return it
         }
-        let sizes = out.compactMap(\.size).sorted()
+        // Snap single lines only (paragraphs keep their own estimate), in clusters that stay
+        // within 12% of their smallest member so a chain of steps can't drift upward.
+        let sizes = out.filter { $0.lines == 1 }.compactMap(\.size).sorted()
         var clusters: [[CGFloat]] = []
         for s in sizes {
-            if let last = clusters.last?.last, s <= last * 1.1 { clusters[clusters.count - 1].append(s) } else { clusters.append([s]) }
+            if let first = clusters.last?.first, s <= first * 1.12 { clusters[clusters.count - 1].append(s) } else { clusters.append([s]) }
         }
-        for i in out.indices {
+        for i in out.indices where out[i].lines == 1 {
             guard let s = out[i].size, let c = clusters.first(where: { $0.contains(s) }) else { continue }
             out[i].size = (c[c.count / 2] * 2).rounded() / 2
         }

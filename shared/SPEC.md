@@ -78,9 +78,11 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
 - Add OCR items that don't overlap any kept accessibility item by more than 25% of their area.
 - OCR font size: by height = h × 0.8 (single line) or h × 0.74 (multi-line); for single lines
   prefer the size at which the text measured in the system font matches the box width,
-  clamped to 0.75…1.15 × the height estimate; minimum 7. Then **snap**: sort sizes, chain any
-  size ≤ 1.1× its predecessor into one cluster, give every item its cluster's median
-  (rounded to 0.5). OCR text is drawn in the regular system font weight.
+  clamped to 0.6…1.4 × the height estimate (text ≥ 4 characters); paragraphs: the glyph
+  height of their single lines × 0.8, checked against the summed width of
+  those lines (size at which the text measures that wide), clamped to 0.6…1.1×; minimum 7. Then **snap** single lines only: sort,
+  start a cluster at the smallest size and add sizes ≤ 1.12× that first member; every item
+  gets its cluster's median (rounded to 0.5). OCR text is drawn in the regular system font weight.
 
 ### 2.5 Filter (never translated, original stays visible)
 - No letters (numbers, symbols).
@@ -163,7 +165,8 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   but padding only extends into measured free background (never over a border).
   Corner radius 2 (seamless) or 5 with a soft shadow and hairline border (card style).
 - **Single line**: widen into measured free space first (up to 2.5×, on the side the
-  alignment allows, never onto another block's original box or off screen), then shrink in
+  alignment allows, never off screen, and taking at most half of a gap shared with a
+  neighbouring block in the same row: (gap / 2 − 1)), then shrink in
   0.5 pt steps to max(7, 0.6×), then truncate the tail. Never wrap. Draw one line of the
   font's own height centered on the original line's midline.
 - **Paragraph**: shrink to max(7, 0.7×) while taller than 1.06× the box; then grow downward
