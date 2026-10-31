@@ -13,6 +13,20 @@ enum Debug {
             // Renders a settings tab offscreen to a PNG (tab from LINGVEIL_DEBUG_TAB, default models).
             let model = SettingsModel()
             let tab = env["LINGVEIL_DEBUG_TAB"] ?? "models"
+            if tab == "tutorial" {
+                let host = NSHostingView(rootView: TutorialView {}.background(Color(nsColor: .windowBackgroundColor)))
+                host.frame = CGRect(x: 0, y: 0, width: 560, height: 440)
+                let w = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+                w.contentView = host
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                        host.cacheDisplay(in: host.bounds, to: rep)
+                        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
+                    }
+                    exit(0)
+                }
+                return true
+            }
             let t = SettingsWindow.Tab(rawValue: tab) ?? .models
             let size = SettingsWindow.order.first { $0.0 == t }?.3 ?? CGSize(width: 640, height: 600)
             let view = AnyView(SettingsView(m: model, only: t).frame(width: size.width, height: env["LINGVEIL_DEBUG_HEIGHT"] == nil ? size.height : nil))
@@ -97,6 +111,20 @@ enum Debug {
             let name = parts[0]
             if name == "relieve" { malloc_zone_pressure_relief(nil, 0); return }
             MainActor.assumeIsolated {
+                if name == "supportcard" { Support.debugShow(); return }
+                if name == "shot" {
+                    Task {
+                        let screen = NSScreen.main ?? NSScreen.underMouse
+                        if let c = try? await Capture.content(), let d = Capture.display(for: screen, in: c) {
+                            let cfg = SCStreamConfiguration()
+                            cfg.width = Int(screen.frame.width * screen.backingScaleFactor); cfg.height = Int(screen.frame.height * screen.backingScaleFactor)
+                            if let img = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: d, excludingWindows: []), configuration: cfg) {
+                                try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir + "/shot.png"))
+                            }
+                        }
+                    }
+                    return
+                }
                 if name == "stop" { Live.shared.stop(); OneShot.shared.dismiss(); Bubble.shared.close(); return }
                 if parts.count > 1 {
                     let v = parts[1].split(separator: ",").compactMap { Double($0) }
@@ -137,6 +165,7 @@ enum Debug {
                             return !v.blocks.isEmpty || v.status?.hasPrefix("Nothing") == true
                         case .live: return !(Live.shared.debugView?.blocks.isEmpty ?? true)
                         case .cursor, .selection: return Bubble.shared.debugText != nil
+                        case .read, .translateRead: return Narrator.shared.isSpeaking
                         }
                     }
                     for _ in 0..<120 where !done() { try? await Task.sleep(for: .milliseconds(50)) }

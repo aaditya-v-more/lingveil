@@ -1,5 +1,9 @@
 # Lingveil
 
+<p>
+  <a href="https://ko-fi.com/aadityavmore"><img alt="Support this on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=1F1B16"></a>
+</p>
+
 Translate whatever is on your Mac's screen, in place. Press a shortcut and every label, message and paragraph is repainted in your language, in the same spot, with the app's own colors and type, so the window looks as if it had been written in that language.
 
 Free, native (Swift/AppKit), menu bar only.
@@ -50,3 +54,9 @@ ARCHS=arm64 ./build.sh
 ```
 
 Requires macOS 15 or later; local models need Apple silicon. `build.sh` builds llama.cpp's server from `../llama.cpp` (or `LLAMA_CPP_DIR`) the first time. The app asks for Screen Recording (required) and Accessibility (optional, for exact app text and translating selections).
+
+## Support
+
+Lingveil is free. The ♥ Donate button in the top-right corner of Settings, and *Support
+Lingveil on Ko-fi…* in the menu bar, open Ko-fi. If it helps you read the web or your apps,
+you can [buy me a coffee on Ko-fi](https://ko-fi.com/aadityavmore).

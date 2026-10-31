@@ -22,6 +22,11 @@ enum Prefs {
         get { d.object(forKey: "useAX") as? Bool ?? true }
         set { d.set(newValue, forKey: "useAX") }
     }
+    /// Translate web pages paragraph by paragraph (any browser or web-based app).
+    static var webOptimize: Bool {
+        get { d.object(forKey: "webOptimize") as? Bool ?? true }
+        set { d.set(newValue, forKey: "webOptimize") }
+    }
     static var accurateOCR: Bool {
         get { d.object(forKey: "accurateOCR") as? Bool ?? true }
         set { d.set(newValue, forKey: "accurateOCR") }
@@ -47,6 +52,19 @@ enum Prefs {
         get { d.object(forKey: "appleFast") as? Bool ?? true }
         set { d.set(newValue, forKey: "appleFast") }
     }
+    /// Read-aloud speed, 1 = normal.
+    static var speechSpeed: Double {
+        get { d.object(forKey: "speechSpeed") as? Double ?? 1.0 }
+        set { d.set(newValue, forKey: "speechSpeed") }
+    }
+    /// "system" (macOS voices), a voice plugin's name, or "model:<id>" for a narration model.
+    static var voiceEngine: String {
+        get { d.string(forKey: "voiceEngine") ?? "system" }
+        set { d.set(newValue, forKey: "voiceEngine") }
+    }
+    static func voiceID(for key: String) -> String? { d.string(forKey: "voice." + key) }
+    static func setVoiceID(_ id: String?, for key: String) { d.set(id, forKey: "voice." + key) }
+
     static var ollamaURL: String {
         get { d.string(forKey: "ollamaURL") ?? "http://localhost:11434" }
         set { d.set(newValue, forKey: "ollamaURL") }
@@ -88,7 +106,7 @@ enum OverlayStyle: String, CaseIterable, Identifiable {
 }
 
 enum Action: String, CaseIterable {
-    case screen, area, live, cursor, selection
+    case screen, area, live, cursor, selection, read, translateRead
     var title: String {
         switch self {
         case .screen: "Translate Screen"
@@ -96,6 +114,8 @@ enum Action: String, CaseIterable {
         case .live: "Live Translate Area…"
         case .cursor: "Translate Under Pointer"
         case .selection: "Translate Selected Text"
+        case .read: "Read Aloud"
+        case .translateRead: "Translate and Read Aloud"
         }
     }
     var defaultShortcut: Shortcut? {
@@ -106,6 +126,8 @@ enum Action: String, CaseIterable {
         case .live: return Shortcut(key: UInt32(kVK_ANSI_L), mods: m)
         case .cursor: return Shortcut(key: UInt32(kVK_ANSI_D), mods: m)
         case .selection: return Shortcut(key: UInt32(kVK_ANSI_S), mods: m)
+        case .read: return Shortcut(key: UInt32(kVK_ANSI_R), mods: m)
+        case .translateRead: return Shortcut(key: UInt32(kVK_ANSI_E), mods: m)
         }
     }
 }

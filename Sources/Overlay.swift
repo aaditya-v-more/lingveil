@@ -54,6 +54,8 @@ final class OverlayView: NSView {
     var debugSizes: [(String, CGFloat?, CGFloat, NSTextAlignment)] { blocks.indices.map { (blocks[$0].item.text, blocks[$0].item.size, laid[$0].size, aligns[$0]) } }
     private var dropped = Set<Int>()   // blocks dropped because they overlap a better one
     var status: String? { didSet { updateStatus() } }
+    /// Block being read aloud, outlined.
+    var highlight: Int? { didSet { if highlight != oldValue { needsDisplay = true } } }
     var onClick: (() -> Void)?
     var onScroll: (() -> Void)?
     var showBorder = false { didSet { needsDisplay = true } }
@@ -276,6 +278,10 @@ final class OverlayView: NSView {
             ctx.restoreGState()
             if card { p.text.withAlphaComponent(0.18).setStroke(); path.lineWidth = 0.5; path.stroke() }
             l.text.draw(with: l.textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
+        }
+        if let h = highlight, h < laid.count, !dropped.contains(h) {
+            let p = NSBezierPath(roundedRect: laid[h].fill.insetBy(dx: -3, dy: -2), xRadius: 4, yRadius: 4)
+            NSColor.controlAccentColor.withAlphaComponent(0.85).setStroke(); p.lineWidth = 2; p.stroke()
         }
         if showBorder {
             let b = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6)

@@ -3,7 +3,7 @@ import Carbon.HIToolbox
 
 @MainActor
 enum SettingsWindow {
-    enum Tab: String { case general, shortcuts, models, engines, permissions }
+    enum Tab: String { case general, shortcuts, models, voices, engines, permissions }
     private static var window: NSWindow?
     private static var tabs: NSTabViewController?
     private static let model = SettingsModel()
@@ -13,6 +13,7 @@ enum SettingsWindow {
         (.general, "General", "gearshape", SettingsWindow.size),
         (.shortcuts, "Shortcuts", "command", SettingsWindow.size),
         (.models, "Models", "cpu", SettingsWindow.size),
+        (.voices, "Voices", "speaker.wave.2", SettingsWindow.size),
         (.engines, "Online", "globe", SettingsWindow.size),
         (.permissions, "Permissions", "lock.shield", SettingsWindow.size),
     ]
@@ -36,6 +37,7 @@ enum SettingsWindow {
             let w = NSWindow(contentViewController: vc)
             w.styleMask = [.titled, .closable]
             w.toolbarStyle = .preference
+            w.addTitlebarAccessoryViewController(Support.titlebarButton())
             w.isReleasedWhenClosed = false
             w.center()
             window = w
@@ -56,6 +58,7 @@ final class SettingsModel: ObservableObject {
     @Published var style = Prefs.style { didSet { Prefs.style = style } }
     @Published var useAX = Prefs.useAccessibility { didSet { Prefs.useAccessibility = useAX } }
     @Published var accurate = Prefs.accurateOCR { didSet { Prefs.accurateOCR = accurate } }
+    @Published var web = Prefs.webOptimize { didSet { Prefs.webOptimize = web } }
     @Published var hover = Prefs.hoverWithOption { didSet { Prefs.hoverWithOption = hover; HoverWatcher.shared.update() } }
     @Published var cloudKey = Prefs.googleCloudKey { didSet { Prefs.googleCloudKey = cloudKey } }
     @Published var deeplKey = Prefs.deeplKey { didSet { Prefs.deeplKey = deeplKey } }
@@ -87,6 +90,7 @@ struct SettingsView: View {
         case .general: general
         case .shortcuts: shortcuts
         case .models: ModelsView(m: m)
+        case .voices: VoicesView(m: m)
         case .engines: engines
         case .permissions: permissions.onReceive(poll) { _ in m.refresh() }
         }
@@ -101,12 +105,14 @@ struct SettingsView: View {
                 ForEach(OverlayStyle.allCases) { Text($0.title).tag($0) }
             }
             Toggle("Read app text directly (Accessibility) for exact, native-looking results", isOn: $m.useAX)
+            Toggle("Translate web pages by paragraph (any browser)", isOn: $m.web)
             Toggle("Accurate text recognition (slower, better for small text)", isOn: $m.accurate)
             Toggle("Hold ⌥ and rest the pointer on text to translate it", isOn: $m.hover)
             Toggle("Open at login", isOn: $m.login)
             Section {
                 Text("While a translation is showing: hold ⌥ to see the original, hover a block to read its original, right-click to copy, click or press Esc to close.")
                     .font(.callout).foregroundStyle(.secondary)
+                Button("Show Tutorial") { Tips.reset(); Tutorial.show() }
             }
         }
         .formStyle(.grouped)

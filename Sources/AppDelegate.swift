@@ -12,11 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerShortcuts()
         HoverWatcher.shared.update()
         Task.detached(priority: .utility) { await OCRHelper.shared.warmUp() }
+        Support.noteUpdate()
+        // First launch: the tutorial, which walks through permissions on its first page.
         if !UserDefaults.standard.bool(forKey: "onboarded") {
             UserDefaults.standard.set(true, forKey: "onboarded")
-            SettingsWindow.show(tab: .permissions)
-            if !Capture.hasPermission { CGRequestScreenCaptureAccess() }
-            if Prefs.useAccessibility { Permissions.ensureAccessibility() }
+            Tutorial.show()
         }
     }
 
@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .live: Live.shared.toggle()
         case .cursor: Bubble.shared.underPointer()
         case .selection: Bubble.shared.selection()
+        case .read: ReadAloud.read()
+        case .translateRead: ReadAloud.translateAndRead()
         }
     }
 
@@ -57,12 +59,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ m: NSMenu) {
         m.removeAllItems()
         for a in Action.allCases {
-            let title = a == .live && Live.shared.isRunning ? "Stop Live Translation" : a.title
+            let title = a == .live && Live.shared.isRunning ? "Stop Live Translation"
+                : (a == .read || a == .translateRead) && Narrator.shared.isSpeaking ? "Stop Reading" : a.title
             let item = NSMenuItem(title: title, action: #selector(menuAction(_:)), keyEquivalent: "")
             item.representedObject = a.rawValue
             if let s = Prefs.shortcut(a) { item.keyEquivalent = s.menuKey; item.keyEquivalentModifierMask = s.menuModifiers }
             m.addItem(item)
-            if a == .live { m.addItem(.separator()) }
+            if a == .live || a == .selection { m.addItem(.separator()) }
         }
         m.addItem(.separator())
 
@@ -95,6 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             m.addItem(p)
         }
         m.addItem(.separator())
+        let kofi = NSMenuItem(title: "Support Lingveil on Ko-fi…", action: #selector(donate), keyEquivalent: "")
+        kofi.image = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: nil)
+        m.addItem(kofi)
+        m.addItem(withTitle: "Show Tutorial", action: #selector(tutorial), keyEquivalent: "")
         m.addItem(withTitle: "About Lingveil", action: #selector(about), keyEquivalent: "")
         m.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         m.addItem(withTitle: "Quit Lingveil", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -110,7 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func pickTarget(_ i: NSMenuItem) { Prefs.target = i.representedObject as? String ?? Prefs.target }
     @objc private func pickEngine(_ i: NSMenuItem) { Prefs.engine = EngineKind(rawValue: i.representedObject as? String ?? "") ?? .auto }
     @objc private func openSettings() { SettingsWindow.show() }
-    @objc private func about() { NSApp.activate(ignoringOtherApps: true); NSApp.orderFrontStandardAboutPanel(nil) }
+    @objc private func tutorial() { Tutorial.show() }
+    @objc private func donate() { Support.open() }
+    @objc private func about() { NSApp.activate(ignoringOtherApps: true); NSApp.orderFrontStandardAboutPanel(options: [.credits: Support.credits]) }
     @objc private func openPermissions() { SettingsWindow.show(tab: .permissions) }
 }
 
@@ -126,11 +135,13 @@ enum StatusIcon {
         refresh()
     }
 
+    private static var isSpeaking = false
     static func busy(_ b: Bool) { isBusy = b; refresh() }
+    static func speaking(_ b: Bool) { isSpeaking = b; refresh() }
     static func live(_ b: Bool) { isLive = b; refresh() }
 
     private static func refresh() {
-        let name = isBusy ? "ellipsis.bubble" : isLive ? "character.bubble.fill" : "character.bubble"
+        let name = isBusy ? "ellipsis.bubble" : isSpeaking ? "speaker.wave.2.bubble" : isLive ? "character.bubble.fill" : "character.bubble"
         let img = NSImage(systemSymbolName: name, accessibilityDescription: "Lingveil")
         img?.isTemplate = true
         item?.button?.image = img

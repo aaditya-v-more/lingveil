@@ -10,6 +10,7 @@ struct TextItem {
     var font: NSFont?            // known only for Accessibility text
     var size: CGFloat?           // estimated point size for OCR text
     var glyphHeight: CGFloat?    // median height of the single OCR lines a paragraph was merged from
+    var block: Int?              // web text: the paragraph-level element it sits in
     var linesWidth: CGFloat?     // summed width of those lines
     var align: NSTextAlignment = .left
     var fromAX = false
@@ -200,13 +201,47 @@ enum AXText {
             AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
             enabledPIDs.insert(pid)
         }
-        let deadline = Date().addingTimeInterval(budget)
+        // Web pages have far more nodes than native windows.
+        let deadline = Date().addingTimeInterval(Prefs.webOptimize ? max(budget, 0.6) : budget)
         var out: [TextItem] = []
         var visited = 0
         let windows: [AXUIElement] = attr(root, kAXWindowsAttribute) ?? []
         for w in windows {
             guard let wf = frame(w), wf.intersects(region) else { continue }
-            walk(w, clip: wf.intersection(region), depth: 0, deadline: deadline, visited: &visited, out: &out)
+            walk(w, clip: wf.intersection(region), depth: 0, deadline: deadline, block: nil, visited: &visited, out: &out)
+        }
+        return Prefs.webOptimize ? joinInlineRuns(out) : out
+    }
+
+    /// Inline roles inside web text: a link or a styled run inside a paragraph belongs to
+    /// the paragraph, so it's translated together with the rest of the sentence.
+    private static let inlineRoles: Set<String> = ["AXLink", "AXStaticText", "AXEmphasis", "AXStrong", "AXMark", "AXCode"]
+
+    /// Any browser (and web-based apps): text inside a web area arrives as separate runs
+    /// wherever a link or style changes. Consecutive runs from the same paragraph-level
+    /// element are joined into one item, so a sentence isn't translated in pieces.
+    static func joinInlineRuns(_ items: [TextItem]) -> [TextItem] {
+        var out: [TextItem] = []
+        for it in items {
+            // Runs of one sentence share a line (a link inside the text overlaps the line the
+            // text before it ends on); stacked labels (a title over a subtitle) don't.
+            let sharesLine: Bool = {
+                guard let last = out.last else { return false }
+                let overlap = min(last.rect.maxY, it.rect.maxY) - max(last.rect.minY, it.rect.minY)
+                // ...and follow on closely, unlike a badge pinned to the far end of a row.
+                return overlap > min(last.lineHeight, it.lineHeight) * 0.3 && it.rect.minX - last.rect.maxX < it.lineHeight * 1.5
+            }()
+            if var last = out.last, let b = it.block, b == last.block, sharesLine,
+               last.text.count + it.text.count < 2000 {
+                let glue = last.text.hasSuffix(" ") || it.text.hasPrefix(" ") || ",.;:!?)".contains(it.text.first ?? " ") ? "" : " "
+                last.text = (last.text + glue + it.text).trimmingCharacters(in: .whitespaces)
+                let h = min(last.lineHeight, it.lineHeight)
+                last.rect = last.rect.union(it.rect)
+                last.lines = max(1, Int((last.rect.height / max(1, h)).rounded()))
+                out[out.count - 1] = last
+            } else {
+                out.append(it)
+            }
         }
         return out
     }
@@ -216,7 +251,7 @@ enum AXText {
                                                    "AXRadioButton", "AXMenuItem", "AXMenuBarItem", "AXTab", "AXDisclosureTriangle"]
     private static let clipRoles: Set<String> = ["AXScrollArea", "AXWebArea", "AXList", "AXTable", "AXOutline", "AXGroup"]
 
-    private static func walk(_ e: AXUIElement, clip: CGRect, depth: Int, deadline: Date, visited: inout Int, out: inout [TextItem]) {
+    private static func walk(_ e: AXUIElement, clip: CGRect, depth: Int, deadline: Date, block: Int?, visited: inout Int, out: inout [TextItem]) {
         visited += 1
         if depth > 60 || visited > 6000 || Date() > deadline { return }
         let keys = [kAXRoleAttribute, kAXValueAttribute, kAXTitleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXChildrenAttribute] as CFArray
@@ -247,13 +282,18 @@ enum AXText {
                     let font = self.font(e, isText: textRoles.contains(role))
                     let lh = (font?.pointSize ?? glyphs.height) * 1.25
                     let lines = max(1, Int((glyphs.height / lh).rounded()))
-                    out.append(TextItem(text: t, rect: glyphs, lines: lines, font: font, fromAX: true))
+                    var item = TextItem(text: t, rect: glyphs, lines: lines, font: font, fromAX: true)
+                    item.block = block
+                    out.append(item)
                 }
                 if role == "AXStaticText" || titledRoles.contains(role) { return }
             }
         }
         guard let kids = vals[5] as? [AXUIElement] else { return }
-        for k in kids { walk(k, clip: clip, depth: depth + 1, deadline: deadline, visited: &visited, out: &out) }
+        // Inside a web area, remember the nearest paragraph-level element for joinInlineRuns.
+        let childBlock: Int? = role == "AXWebArea" ? Int(CFHash(e))
+            : block == nil ? nil : (inlineRoles.contains(role) ? block : Int(CFHash(e)))
+        for k in kids { walk(k, clip: clip, depth: depth + 1, deadline: deadline, block: childBlock, visited: &visited, out: &out) }
     }
 
     /// Element under a screen point (AppKit coordinates).

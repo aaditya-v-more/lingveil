@@ -29,7 +29,7 @@ final class OneShot {
         }
     }
 
-    func run(screen: NSScreen, rect: CGRect?) {
+    func run(screen: NSScreen, rect: CGRect?, then done: (@MainActor ([Block]) -> Void)? = nil) {
         guard Permissions.ensureScreenCapture() else { return }
         dismiss()
         Translation.preconnect()
@@ -61,6 +61,7 @@ final class OneShot {
                 w.view.status = nil
                 w.view.blocks = blocks
                 if blocks.isEmpty { flash(w, "Nothing to translate into \(target.name)") }
+                else { Tips.show(.overlay); Support.used(); done?(blocks) }
             } catch {
                 guard window === w else { return }
                 slow.cancel()
@@ -91,11 +92,12 @@ final class OneShot {
     }
 
     func dismiss() {
+        if Narrator.shared.isSpeaking, window != nil { Narrator.shared.stop() }
         task?.cancel(); task = nil
         if let k = escKey { HotKeys.shared.unregister(k); escKey = nil }
         if let o = appObserver { NSWorkspace.shared.notificationCenter.removeObserver(o); appObserver = nil }
         peek?.invalidate(); peek = nil
-        if let w = window { window = nil; w.fadeOut { Memory.relieve() } }
+        if let w = window { window = nil; w.fadeOut { Memory.relieve() }; Support.maybeAsk() }
     }
 }
 
@@ -226,6 +228,7 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         stopKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: UInt32(optionKey))) { [weak self] in self?.stop() }
         StatusIcon.live(true)
+        Tips.show(.live)
     }
 
     func stop() {
@@ -347,21 +350,28 @@ final class Bubble {
         }
     }
 
-    func selection() {
+    func selection(speak: Bool = false) {
         guard let text = AXText.selectedText() else {
             if !AXText.trusted { Permissions.ensureAccessibility(); return }
             show("Select some text first", nil, near: NSEvent.mouseLocation); return
         }
-        Task { await translateAndShow(text, near: NSEvent.mouseLocation) }
+        Task { await translateAndShow(text, near: NSEvent.mouseLocation, speak: speak) }
     }
 
-    private func translateAndShow(_ text: String, near p: CGPoint) async {
+    private func translateAndShow(_ text: String, near p: CGPoint, speak: Bool = false) async {
         lastText = text
         let target = Language.named(Prefs.target)
         do {
             let t = try await Translation.translate([text], to: target).first ?? text
             show(t, text, near: p)
+            if speak { Narrator.shared.read([Segment(text: t, rect: nil, language: target.appleID)]) { _ in } }
         } catch { show(error.localizedDescription, nil, near: p) }
+    }
+
+    @objc private func speakCard(_ b: NSButton) {
+        if Narrator.shared.isSpeaking { Narrator.shared.stop(); return }
+        let text = b.identifier?.rawValue ?? ""
+        Narrator.shared.read([Segment(text: text, rect: nil, language: Language.named(Prefs.target).appleID)]) { _ in }
     }
 
     private func dist(_ r: CGRect, _ p: CGPoint) -> CGFloat {
@@ -396,7 +406,13 @@ final class Bubble {
             copy.contentTintColor = .secondaryLabelColor
             copy.toolTip = "Copy translation"
             copy.identifier = NSUserInterfaceItemIdentifier(translation)
-            let row = NSStackView(views: [o, NSView(), copy])
+            let speak = NSButton(image: NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: "Read aloud")!,
+                                 target: self, action: #selector(speakCard(_:)))
+            speak.isBordered = false
+            speak.contentTintColor = .secondaryLabelColor
+            speak.toolTip = "Read aloud"
+            speak.identifier = NSUserInterfaceItemIdentifier(translation)
+            let row = NSStackView(views: [o, NSView(), speak, copy])
             row.alignment = .lastBaseline
             row.setHuggingPriority(.defaultLow, for: .horizontal)
             stack.addArrangedSubview(row)
@@ -432,6 +448,7 @@ final class Bubble {
         w.orderFrontRegardless()
         panel = w
         escKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: 0)) { [weak self] in self?.close() }
+        if original != nil { Tips.show(.card) }
         monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] _ in
             MainActor.assumeIsolated { self?.close() }
         }
