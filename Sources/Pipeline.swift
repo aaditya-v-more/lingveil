@@ -51,7 +51,7 @@ enum Pipeline {
         }
         // Network engines answer a batch at once; local models work line by line, so smaller
         // batches let the first lines appear while the rest are still being translated.
-        let network = [.google, .googleCloud, .deepl].contains(Prefs.engine)
+        let network = [.auto, .google, .googleCloud, .deepl].contains(Prefs.engine)
         let size = network ? 30 : 8
         // Online batches all go out at once; on-device engines are already busy with one batch
         // (they run lines in parallel inside it), so their batches go one after another.

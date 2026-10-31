@@ -91,7 +91,7 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
 
 ### 2.6 Translation
 - Order: items inside the front window first, then top to bottom.
-- Batches: 30 items for online engines (all batches sent at once); 8 items for local
+- Batches: 30 items for online engines, Automatic included (all batches sent at once); 8 items for local
   engines (one batch at a time — the server already runs lines in parallel). Paint each
   batch as it lands.
 - Cache: translation per (target, text), up to 20,000 entries, shared by all modes.
@@ -162,6 +162,23 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   system-wide focused element.
 - Card: below the text (above if no room), max width 380, translation 14 pt, original
   11 pt secondary (≤ 4 lines), Copy button; closes on click, scroll or Esc.
+
+## 2.12 Platform notes (same intent, different mechanics)
+
+Windows:
+- OCR (Windows.Media.Ocr) boxes cover only the ink. Estimate em = ink height / 0.73 (no
+  descenders), / 0.95 (descenders) or / 0.9 (CJK), and grow each line box to baseline
+  −0.98 em … +0.27 em so it matches the ~1.25 em line boxes the constants above assume.
+- Label-row split: word boxes are tight there, so split at an inter-word gap > 1.0 em.
+- Windows OCR runs one engine per language and needs that language's OCR pack. The app
+  lists installed packs, recognizes with the packs for the languages the user reads, and
+  offers to install missing ones (Add-WindowsCapability `Language.OCR~~~<tag>~0.0.1.0`,
+  which asks for admin rights).
+- "Already in the target language" uses script share (> 80% of letters) for non-Latin
+  targets; Latin/Cyrillic targets rely on Google's detected language.
+- Fitting: fallback fonts (Nirmala UI, Yu Gothic) have tall line metrics, so a block also
+  fits when it uses no more lines than the original; no ellipsis trimming.
+- Offline engine is the local model only (there is no OS translator).
 
 ## 3. Resources and memory
 - Idle app: tens of MB. OCR models (~120 MB on Mac) live in a helper process that exits
