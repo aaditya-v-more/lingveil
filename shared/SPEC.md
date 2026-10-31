@@ -70,8 +70,11 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   as its left edges is centered.
 
 ### 2.4 Merging and sizes
-- Keep an accessibility item only if some OCR text overlaps it (proves it is visible), and
-  drop duplicates (same text, >50% overlap).
+- Keep an accessibility item only if OCR items lie inside it (each with ≥ 50% of its area
+  inside; proves it is visible), and drop duplicates (same text, > 50% overlap). Its line
+  count is the sum of those OCR items' lines. When it has no font (web and Electron apps
+  give none), or its font size is outside 0.6–1.6× the OCR size, take the size (median of
+  the OCR items) and the box (union of the OCR items) from OCR instead.
 - Add OCR items that don't overlap any kept accessibility item by more than 25% of their area.
 - OCR font size: by height = h × 0.8 (single line) or h × 0.74 (multi-line); for single lines
   prefer the size at which the text measured in the system font matches the box width,
@@ -143,8 +146,10 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   Vertical gradient top→bottom when the background is a gradient.
 - Fit: start at the item's font (or estimated size), shrink in 0.5 pt steps down to 0.76×
   while the wrapped text is taller than 1.06× the box; a single line may then widen up to
-  1.6× (centered items grow both ways); then shrink to max(7, 0.7×); if still too tall,
-  extend the box downward rather than truncate. Center the text vertically.
+  1.6× (centered items grow both ways) but only into free space (no other block's original
+  box, not past the screen edge); then shrink to max(7, 0.7×); if still too tall, grow
+  downward only into free space and at most 0.5× the box, then shrink to max(7, 0.55×)
+  and truncate. Center the text vertically.
 - Fade the overlay in over 120 ms, out over 100 ms. Never animate text that is being read.
 
 ### 2.10 Live mode
@@ -183,6 +188,10 @@ Windows:
 - Fitting: fallback fonts (Nirmala UI, Yu Gothic) have tall line metrics, so a block also
   fits when it uses no more lines than the original; no ellipsis trimming.
 - Offline engine is the local model only (there is no OS translator).
+- llama-server (Vulkan build) is started with `VK_LOADER_LAYERS_DISABLE=~implicit~`: on
+  laptops with switchable AMD + NVIDIA graphics an implicit Vulkan layer hangs startup forever.
+- UI Automation gives element frames, not glyph bounds or fonts, so UIA items take their box,
+  line count and size from the OCR lines inside them (same rule as 2.4).
 
 ## 3. Resources and memory
 - Idle app: tens of MB. OCR models (~120 MB on Mac) live in a helper process that exits
