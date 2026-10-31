@@ -1,0 +1,32 @@
+Settings.
+New chat.
+Please enter your message.
+What time does the meeting tomorrow start?
+I sent you the photos.
+Good morning. Would you be available to meet this afternoon at a cafe near the station? I have something I'd like to discuss with you regarding a new project.
+The download is complete.
+Would you like to delete this account? Please note that this action cannot be undone.
+Enable notifications.
+There are unsaved changes.
+Save changes.
+Delete account.
+Privacy and security.
+Automatic backup.
+Your messages are protected with end-to-end encryption. No one outside of this chat can read them.
+Did you forget your password?
+Sign in with Google.
+5 minutes ago.
+Download.
+Settings.
+Search for contacts.
+Your payment has been successfully processed, and your order will be shipped within three business days.
+The network connection failed. Please check your network settings and try again.
+Read.
+Search.
+Add friend.
+Would you like to change your password?
+Would you like to have dinner with me tonight?
+Settings.
+Cancel.
+Your session has expired. Please log in again.
+The file could not be saved.

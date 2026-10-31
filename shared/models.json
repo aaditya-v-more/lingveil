@@ -234,7 +234,7 @@
       "id": "index-translate-9b",
       "name": "Index-Translate 9B",
       "maker": "IndexTeam",
-      "summary": "The 9B Index-Translate, 150 languages, for Macs with memory to spare.",
+      "summary": "The 9B Index-Translate, 150 languages. In our tests strong into Japanese and Hindi, but 3–4× slower than the 2B and still behind Gemma 4 E2B overall.",
       "repo": "IndexTeam/Index-Translate-9B-GGUF",
       "file": "Index-Translate-9B.Q4_K_M.gguf",
       "sha256": "9cc6758b0007f4cbf42ea3400768cbff91ae74ef8d640e467158348426d33713",
@@ -242,19 +242,19 @@
       "ramGB": 16,
       "languages": 150,
       "prompt": "index-translate",
-      "speed": 2,
-      "accuracy": 5,
+      "speed": 1,
+      "accuracy": 4,
       "recommended": false,
       "badge": null,
       "license": "Apache 2.0",
       "supported": null,
-      "tested": false
+      "tested": true
     },
     {
       "id": "translategemma-12b",
       "name": "TranslateGemma 12B",
       "maker": "Google",
-      "summary": "The 12B TranslateGemma. Very accurate on documents, slow for live use.",
+      "summary": "The 12B TranslateGemma. Good into English, weak into Hindi, and the slowest model in our tests (about 25 s for a screenful on a MacBook Air).",
       "repo": "mradermacher/translategemma-12b-it-GGUF",
       "file": "translategemma-12b-it.Q4_K_M.gguf",
       "sha256": "b7aac4b4be7ab0c49b6556c29c4467e74313df7f1e95d9f9676bb2adf0afa528",
@@ -263,12 +263,12 @@
       "languages": 55,
       "prompt": "translate-gemma",
       "speed": 1,
-      "accuracy": 5,
+      "accuracy": 3,
       "recommended": false,
       "badge": null,
       "license": "Gemma",
       "supported": null,
-      "tested": false
+      "tested": true
     },
     {
       "id": "hy-mt2-30b-a3b",
