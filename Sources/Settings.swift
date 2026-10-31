@@ -7,12 +7,14 @@ enum SettingsWindow {
     private static var window: NSWindow?
     private static var tabs: NSTabViewController?
     private static let model = SettingsModel()
+    /// One size for every tab: switching tabs never resizes the window.
+    static let size = CGSize(width: 660, height: 620)
     static let order: [(Tab, String, String, CGSize)] = [
-        (.general, "General", "gearshape", CGSize(width: 560, height: 330)),
-        (.shortcuts, "Shortcuts", "command", CGSize(width: 520, height: 320)),
-        (.models, "Models", "cpu", CGSize(width: 660, height: 660)),
-        (.engines, "Online", "globe", CGSize(width: 520, height: 300)),
-        (.permissions, "Permissions", "lock.shield", CGSize(width: 540, height: 250)),
+        (.general, "General", "gearshape", SettingsWindow.size),
+        (.shortcuts, "Shortcuts", "command", SettingsWindow.size),
+        (.models, "Models", "cpu", SettingsWindow.size),
+        (.engines, "Online", "globe", SettingsWindow.size),
+        (.permissions, "Permissions", "lock.shield", SettingsWindow.size),
     ]
 
     /// A standard macOS settings window: toolbar tabs, each sized to its content, and the
@@ -22,9 +24,9 @@ enum SettingsWindow {
         if window == nil {
             let vc = NSTabViewController()
             vc.tabStyle = .toolbar
-            vc.transitionOptions = [.crossfade, .allowUserInteraction]
+            vc.transitionOptions = [.allowUserInteraction]
             for (t, title, icon, size) in order {
-                let host = NSHostingController(rootView: SettingsView(m: model, only: t).frame(width: size.width, height: size.height))
+                let host = NSHostingController(rootView: SettingsView(m: model, only: t).frame(width: size.width, height: size.height, alignment: .top))
                 host.preferredContentSize = size
                 let item = NSTabViewItem(viewController: host)
                 item.label = title
