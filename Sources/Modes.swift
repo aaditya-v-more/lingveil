@@ -50,6 +50,7 @@ final class OneShot {
                 let snap = try await Capture.snapshot(screen, rect: rect)
                 let captureMs = Date().timeIntervalSince(tc) * 1000
                 let items = await Pipeline.items(in: snap, app: app)
+                for it in items { Debug.log("item \(it.fromAX ? "AX " : "OCR") \(Int(it.rect.minX)),\(Int(it.rect.minY)) \(Int(it.rect.width))x\(Int(it.rect.height)) \(it.text.prefix(50))") }
                 let blocks = try await Pipeline.blocks(for: items, in: snap, to: target, focus: Pipeline.frontWindowFrame(of: app)) { partial in
                     guard self.window === w else { return }
                     slow.cancel(); w.view.status = nil; w.view.blocks = partial

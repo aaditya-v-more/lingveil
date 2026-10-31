@@ -35,14 +35,15 @@ enum Pipeline {
             if let f = a.font, let o = ocrSize, f.pointSize > o * 1.6 || f.pointSize < o * 0.6 { a.font = nil }
             if a.font == nil {
                 a.size = ocrSize
-                a.rect = inside.dropFirst().reduce(inside[0].rect) { $0.union($1.rect) }
+                // The element's own box covers all of its text; OCR pieces can stick out a little.
+                a.rect = inside.reduce(a.rect) { $0.union($1.rect) }
                 if inside.count == 1 { a.align = inside[0].align }
             }
             axValid.append(a)
         }
         let extra = seen.filter { o in
             let area = o.rect.width * o.rect.height
-            return !axValid.contains { overlap($0.rect, o.rect) > area * 0.25 }
+            return !axValid.contains { overlap($0.rect, o.rect) > area * 0.25 } && !ax.contains { overlap($0.rect, o.rect) > area * 0.5 }
         }
         return axValid + extra
     }

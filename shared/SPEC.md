@@ -74,7 +74,7 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   inside; proves it is visible), and drop duplicates (same text, > 50% overlap). Its line
   count is the sum of those OCR items' lines. When it has no font (web and Electron apps
   give none), or its font size is outside 0.6–1.6× the OCR size, take the size (median of
-  the OCR items) and the box (union of the OCR items) from OCR instead.
+  the OCR items) from OCR, and grow its box to include those OCR items.
 - Add OCR items that don't overlap any kept accessibility item by more than 25% of their area.
 - OCR font size: by height = h × 0.8 (single line) or h × 0.74 (multi-line); for single lines
   prefer the size at which the text measured in the system font matches the box width,
