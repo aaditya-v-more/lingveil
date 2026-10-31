@@ -12,7 +12,7 @@ enum Harness {
     private static var follower: Follower?
     private static var overlay: OverlayWindow?
 
-    static func start(log: String) {
+    static func start(log: String, exitWhenDone: Bool = false) {
         let text = (log as NSString).deletingLastPathComponent + "/harness-text.txt"
         let child = Process()
         child.executableURL = URL(fileURLWithPath: Bundle.main.executablePath!)
@@ -42,7 +42,7 @@ enum Harness {
             }
             follower = f; overlay = o
             await f.start()
-            child.terminationHandler = { _ in Task { @MainActor in f.stop(); o.orderOut(nil); Debug.log("harness done") } }
+            child.terminationHandler = { _ in Task { @MainActor in f.stop(); o.orderOut(nil); Debug.log("harness done"); if exitWhenDone { exit(0) } } }
         }
     }
 
@@ -51,7 +51,10 @@ enum Harness {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let content = (try? String(contentsOfFile: text, encoding: .utf8)) ?? String(repeating: "Lorem ipsum dolor sit amet.\n", count: 400)
-        let w = NSWindow(contentRect: CGRect(x: 160, y: 140, width: 760, height: 620), styleMask: [.titled], backing: .buffered, defer: false)
+        // LINGVEIL_HARNESS_SIZE=<w>x<h> tries other window sizes (following costs more on big windows).
+        let size = (ProcessInfo.processInfo.environment["LINGVEIL_HARNESS_SIZE"] ?? "").split(separator: "x").compactMap { Double($0) }
+        let (ww, wh) = size.count == 2 ? (size[0], size[1]) : (760, 620)
+        let w = NSWindow(contentRect: CGRect(x: 160, y: 140, width: ww, height: wh), styleMask: [.titled], backing: .buffered, defer: false)
         w.title = "Lingveil scroll test"
         let sv = NSTextView.scrollableTextView()
         let tv = sv.documentView as! NSTextView
@@ -62,6 +65,7 @@ enum Harness {
         w.orderBack(nil)
         FileManager.default.createFile(atPath: log, contents: nil)
         let out = FileHandle(forWritingAtPath: log)!
+        out.write(Data(String(format: "view %.0f\n", sv.contentView.bounds.height).utf8))
         // Where every line is, in document points from the top.
         tv.layoutManager!.ensureLayout(for: tv.textContainer!)
         tv.layoutManager!.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: tv.layoutManager!.numberOfGlyphs)) { r, _, _, g, _ in

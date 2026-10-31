@@ -282,8 +282,13 @@ final class Follower: NSObject, SCStreamOutput, SCStreamDelegate {
             var tb = mach_timebase_info_data_t(); mach_timebase_info(&tb)
             shown = Double(mach) * Double(tb.numer) / Double(tb.denom) / 1e9
         }
+        let t0 = CACurrentMediaTime()
         guard let motion = tracker.frame(pb, time: shown) else { return }
-        Task { @MainActor in self.changed(motion) }
+        let t1 = CACurrentMediaTime()
+        Task { @MainActor in
+            Debug.log(String(format: "frame track %.1f ms, %.1f ms after shown, main %.1f ms later", (t1 - t0) * 1000, (t1 - shown) * 1000, (CACurrentMediaTime() - t1) * 1000))
+            self.changed(motion)
+        }
     }
 
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {

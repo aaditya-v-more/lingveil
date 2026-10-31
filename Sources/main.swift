@@ -5,6 +5,15 @@ if let i = CommandLine.arguments.firstIndex(of: "--child-guard") { ChildGuard.ru
 if let i = CommandLine.arguments.firstIndex(of: "--scroll-harness"), CommandLine.arguments.count > i + 2 {
     MainActor.assumeIsolated { Harness.runWindow(text: CommandLine.arguments[i + 1], log: CommandLine.arguments[i + 2]) }
 }
+if let i = CommandLine.arguments.firstIndex(of: "--follow-bench"), CommandLine.arguments.count > i + 1 {
+    // Runs the scroll-following measurement on its own (see Harness), without the menu bar app.
+    MainActor.assumeIsolated {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        Harness.start(log: CommandLine.arguments[i + 1], exitWhenDone: true)
+        app.run()
+    }
+}
 LlamaServer.cleanUpStale()
 signal(SIGPIPE, SIG_IGN)
 

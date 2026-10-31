@@ -20,7 +20,7 @@ global space; Windows works in physical pixels divided by the monitor's scale.
 |---|---|---|
 | Translate screen | ⌥⇧T / Alt+Shift+T | Whole monitor under the pointer. Same shortcut, click, scroll, Esc or switching apps closes it. |
 | Translate area | ⌥⇧A / Alt+Shift+A | Drag a rectangle (dim the screen, Esc or right-click cancels), then as above. |
-| Live area | ⌥⇧L / Alt+Shift+L | Drag a rectangle; it stays translated while its pixels change. Same shortcut or ⌥Esc / Alt+Esc stops. Overlay is click-through with an accent border. |
+| Live area | ⌥⇧L / Alt+Shift+L | Drag a rectangle; it stays translated while its pixels change and follows its text while it scrolls, the same way as 2.12b (moving blocks with the text, reading only what is new). Same shortcut or ⌥Esc / Alt+Esc stops. Overlay is click-through with an accent border. |
 | Under pointer | ⌥⇧D / Alt+Shift+D | Card with the translation of the paragraph under the pointer (original underneath, Copy button). |
 | Selection | ⌥⇧S / Alt+Shift+S | Card with the translation of the selected text in the front app. |
 | Hover | hold ⌥ / Alt (opt-in) | Pointer resting ~0.3 s over text shows the pointer card. |

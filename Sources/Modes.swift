@@ -262,23 +262,17 @@ enum RegionPicker {
 
 // MARK: - Live
 
-/// Keeps an area translated while it changes (video subtitles, chats, games). Uses a
-/// ScreenCaptureKit stream, which only delivers frames when pixels change, so an idle
-/// screen costs nothing.
+/// Keeps an area translated while it changes (video subtitles, chats, games) and while it
+/// scrolls: the same following as a translated window (see Follower), on a picked area that
+/// stays until it is stopped, whichever app is in front.
 @MainActor
-final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
+final class Live {
     static let shared = Live()
-    private var stream: SCStream?
+    private var follower: Follower?
     private var window: OverlayWindow?
-    private var screen: NSScreen?
-    private var area: CGRect = .zero
-    private var pending: PixelBuffer?
-    private var working = false
-    private var lastChange = Date.distantPast
     private var stopKey: UInt32?
-    private let queue = DispatchQueue(label: "lingveil.live", qos: .userInitiated)
 
-    var isRunning: Bool { stream != nil }
+    var isRunning: Bool { follower != nil }
     var debugView: OverlayView? { window?.view }
 
     func toggle() {
@@ -291,31 +285,20 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func start(screen: NSScreen, rect: CGRect) async {
-        self.screen = screen; area = rect
         // The overlay goes up first so the capture filter can exclude it.
         let w = OverlayWindow(frame: rect, interactive: false)
         w.view.showBorder = true
         w.show()
         window = w
-        do {
-            let (filter, _) = try await Capture.filter(for: screen)
-            let cfg = SCStreamConfiguration()
-            cfg.sourceRect = Capture.localRect(rect, on: screen)
-            cfg.width = Int(rect.width * screen.backingScaleFactor)
-            cfg.height = Int(rect.height * screen.backingScaleFactor)
-            cfg.minimumFrameInterval = CMTime(value: 1, timescale: 4)
-            cfg.queueDepth = 3
-            cfg.showsCursor = false
-            cfg.pixelFormat = kCVPixelFormatType_32BGRA
-            let s = SCStream(filter: filter, configuration: cfg, delegate: self)
-            try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-            try await s.startCapture()
-            Debug.log("live started \(rect)")
-            stream = s
-        } catch {
-            window?.orderOut(nil); window = nil
-            Alerts.show("Live translation could not start", error.localizedDescription); return
+        Translation.preconnect()
+        let f = Follower(window: w, screen: screen, area: rect)
+        follower = f
+        await f.start()
+        guard f.running, follower === f else {
+            if follower === f { follower = nil; window?.orderOut(nil); window = nil }
+            Alerts.show("Live translation could not start", "The screen could not be captured."); return
         }
+        Debug.log("live started \(rect)")
         stopKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: UInt32(optionKey))) { [weak self] in self?.stop() }
         StatusIcon.live(true)
         Tips.show(.live)
@@ -323,35 +306,13 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func stop() {
         if let k = stopKey { HotKeys.shared.unregister(k); stopKey = nil }
-        let s = stream; stream = nil
-        Task { try? await s?.stopCapture() }
+        follower?.stop(); follower = nil
         window?.fadeOut { Memory.relieve() }; window = nil
-        pending = nil
-        lastPrint = []
         StatusIcon.live(false)
     }
 
-    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, sb.isValid,
-              let info = (CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
-              let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
-              let pb = sb.imageBuffer else { return }
-        CVPixelBufferLockBaseAddress(pb, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
-        let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb), row = CVPixelBufferGetBytesPerRow(pb)
-        guard let src = CVPixelBufferGetBaseAddress(pb) else { return }
-        // ScreenCaptureKit can mark unchanged frames complete, so compare a coarse
-        // brightness fingerprint and only copy and translate when the picture changed.
-        let print = Self.fingerprint(src, w, h, row)
-        guard Self.differs(print, lastPrint) else { return }
-        lastPrint = print
-        guard let px = PixelBuffer(width: w, height: h) else { return }
-        for y in 0..<h { memcpy(px.base + y * px.bytesPerRow, src + y * row, w * 4) }
-        Task { @MainActor in self.frameChanged(px) }
-    }
-
-    private nonisolated(unsafe) var lastPrint: [UInt8] = []
-
+    /// A coarse brightness fingerprint of a frame, to tell frames that really changed from
+    /// ones ScreenCaptureKit marks complete without a change.
     nonisolated static func fingerprint(_ base: UnsafeMutableRawPointer, _ w: Int, _ h: Int, _ row: Int) -> [UInt8] {
         let n = 64
         var out = [UInt8](repeating: 0, count: n * n)
@@ -371,33 +332,6 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
         var changed = 0
         for i in a.indices where abs(Int(a[i]) - Int(b[i])) > 12 { changed += 1 }
         return changed > 2
-    }
-
-    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
-        Task { @MainActor in self.stop() }
-    }
-
-    private func frameChanged(_ px: PixelBuffer) {
-        pending = px
-        lastChange = Date()
-        guard !working else { return }
-        working = true
-        Task {
-            // Let scrolling / animation settle briefly before reading the text.
-            while Date().timeIntervalSince(lastChange) < 0.25 { try? await Task.sleep(for: .milliseconds(80)) }
-            while let px = pending, let screen, isRunning {
-                pending = nil
-                let snap = Snapshot(pixels: px, frame: area, scale: screen.backingScaleFactor)
-                let items = await Pipeline.items(in: snap, app: Pipeline.frontApp)
-                Debug.log("live items \(items.count)")
-                do {
-                    let blocks = try await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target))
-                    Debug.log("live blocks \(blocks.count)")
-                    if isRunning { window?.view.blocks = blocks }
-                } catch { Debug.log("live error \(error.localizedDescription)") }
-            }
-            working = false
-        }
     }
 }
 

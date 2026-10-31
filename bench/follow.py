@@ -13,9 +13,12 @@ import bisect, statistics, sys
 
 d = sys.argv[1]
 lines, offs = [], []
+VIEW_H = 592
 for l in open(f"{d}/follow.log.truth", encoding="utf-8"):
     if l.startswith("line "):
         y, text = l[5:].rstrip("\n").split("\t", 1); lines.append((float(y), text))
+    elif l.startswith("view "):
+        VIEW_H = float(l.split()[1])
     elif l.startswith("offset "):
         _, t, o = l.split(); offs.append((float(t), float(o)))
 ts = [t for t, _ in offs]
@@ -23,7 +26,6 @@ ts = [t for t, _ in offs]
 # The harness logs a scroll position when it sets it; the screen shows it at the next
 # refresh, about a frame later.
 DRAWN = 1 / 60
-VIEW_H = 592
 
 def offset(t):
     t -= DRAWN

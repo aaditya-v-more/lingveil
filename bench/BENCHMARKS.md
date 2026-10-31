@@ -60,7 +60,9 @@ the front window; Google does the same screen in under a second.
 The debug action `harness` opens a test window behind all others that scrolls itself
 (slow scroll, a fast flick, scrolling back) and logs where every line really is; Lingveil
 follows it with an invisible overlay and logs where it shows each translated block.
-`python3 bench/follow.py <debug dir>` compares them. A 760×620 pt window of README/SPEC
+`python3 bench/follow.py <debug dir>` compares them. `Lingveil --follow-bench <log>` runs the
+same thing without the menu bar app, and `LINGVEIL_HARNESS_SIZE=1500x950` tries a bigger
+window. A 760×620 pt window of README/SPEC
 text, Google, Apple silicon, several runs:
 
 | | Typical | 90% of samples |
@@ -72,7 +74,8 @@ text, Google, Apple silicon, several runs:
 
 Reading only the strips that are new takes 35–250 ms instead of 300–1000 ms for the window;
 most of the wait for new text is now the translation request itself (120–600 ms to Google).
-During a flick (~8000 pt/s) blocks are hidden until the window settles. Text seen before
+At 1500×950 pt (about a full laptop window) following a frame takes 8 ms (3 ms at
+760×620), and the error while scrolling is median 3.8 pt, 90% 15 pt. During a flick (~8000 pt/s) blocks are hidden until the window settles. Text seen before
 comes back instantly from the translation cache.
 
 ## Text recognition on screen text
