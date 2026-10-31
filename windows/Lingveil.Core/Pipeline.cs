@@ -81,7 +81,15 @@ public static class Pipeline
                 {
                     var clean = translated[k].Trim();
                     if (clean.Length == 0 || string.Equals(clean, batch[k].Text, StringComparison.OrdinalIgnoreCase)) continue;
-                    blocks.Add(new Block(batch[k], Filters.CaseMatched(clean, batch[k].Text), Colors.Sample(snap.Pixels, snap.PixelRect(batch[k].Rect))));
+                    var item = batch[k];
+                    var palette = Colors.Sample(snap.Pixels, snap.PixelRect(item.Rect));
+                    double before = item.Rect.Width;
+                    var around = Refine.Measure(ref item, snap, palette.Background, palette.Text);
+                    // OCR boxes are often narrower than the letters; a size estimated from the
+                    // narrow box is too small, so scale it with the measured width.
+                    if (!item.FromUia && item.Lines == 1 && item.FontSize is { } sz && before > 0 && item.Rect.Width > before * 1.03)
+                        item.FontSize = Math.Min(sz * item.Rect.Width / before, item.LineHeight * 1.1);
+                    blocks.Add(new Block(item, Filters.CaseMatched(clean, item.Text), palette, around));
                 }
                 List<Block> sofar;
                 lock (gate) { done.AddRange(blocks); sofar = [.. done]; }
@@ -107,12 +115,15 @@ public static class Pipeline
     {
         var outItems = items.Select(it =>
         {
-            double byHeight = it.LineHeight * (it.Lines > 1 ? 0.74 : 0.8);
+            // Paragraphs: size from their single lines' height, not the line pitch, which
+            // includes the app's line spacing.
+            double byHeight = (it.Lines > 1 ? it.GlyphHeight ?? it.LineHeight / 1.2 : it.LineHeight) * 0.8;
             double size = byHeight;
-            if (it.Lines == 1)
+            if (it.Lines == 1 && it.Text.Length >= 4)
             {
+                // Width is steadier than height (which swings with ascenders and descenders).
                 double w = Measure.Width(it.Text, 20);
-                if (w > 0) size = Math.Min(Math.Max(20 * it.Rect.Width / w, byHeight * 0.75), byHeight * 1.15);
+                if (w > 0) size = Math.Min(Math.Max(20 * it.Rect.Width / w, byHeight * 0.6), byHeight * 1.4);
             }
             it.FontSize = Math.Max(7, size);
             return it;

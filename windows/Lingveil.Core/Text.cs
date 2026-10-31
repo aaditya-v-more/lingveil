@@ -22,10 +22,16 @@ public static partial class Filters
 
     /// File names, URLs, paths, emails, handles and code-ish tokens read the same in every
     /// language; translating them only mangles them.
+    [GeneratedRegex(@"&&|\|\||\s\|\s|^\$\s|\s--?[a-zA-Z]|\b\w+=[^\s]|[{};]\s*$|<<|>>|::|->|=>")] private static partial Regex CodeLine();
+
     public static bool IsLiteral(string text)
     {
         var t = text.Trim();
         if (t.Contains("://") || t.StartsWith("www.") || t.StartsWith('/') || t.StartsWith("~/") || t.StartsWith('@') || t.StartsWith('#')) return true;
+        // Whole lines of code or shell: operators, flags, assignments, or mostly symbols.
+        if (CodeLine().IsMatch(t)) return true;
+        var visible = t.Where(c => !char.IsWhiteSpace(c)).ToList();
+        if (visible.Count >= 8 && visible.Count(c => "[]{}()<>=;:/\\|&$#*_~`'\"".Contains(c)) / (double)visible.Count > 0.18) return true;
         if (t.Contains(' ')) return false;
         if (t.Contains('@') && t.Contains('.')) return true;
         return FileName().IsMatch(t) || CodeLike().IsMatch(t);

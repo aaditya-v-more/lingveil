@@ -107,7 +107,7 @@ public sealed class OverlayView : FrameworkElement
 
     int? IndexAt(Point p)
     {
-        for (int i = 0; i < laid.Count; i++) if (laid[i].Box.Contains(p)) return i;
+        for (int i = 0; i < laid.Count; i++) if (!laid[i].Dropped && laid[i].Box.Contains(p)) return i;
         return null;
     }
 

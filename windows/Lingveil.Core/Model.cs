@@ -12,6 +12,7 @@ public record struct TextItem(string Text, Rect Rect, int Lines)
     public double? FontSize { get; set; }       // exact (UIA) or estimated (OCR) size in points
     public TextAlignment Align { get; set; } = TextAlignment.Left;
     public bool FromUia { get; set; }
+    public double? GlyphHeight { get; set; }    // median height of the single OCR lines a paragraph was merged from
 
     public readonly double LineHeight => Rect.Height / Math.Max(1, Lines);
     public readonly bool IsCJK => Text.Any(c => c is >= '぀' and <= '鿿' || c is >= '가' and <= '힯');
@@ -19,14 +20,16 @@ public record struct TextItem(string Text, Rect Rect, int Lines)
     public readonly bool IsLiteral => Filters.IsLiteral(Text);
 }
 
-/// A translated piece of text, ready to paint.
-public record Block(TextItem Item, string Translation, Palette Palette);
+/// A translated piece of text, ready to paint, with what was measured around it.
+public record Block(TextItem Item, string Translation, Palette Palette, Surroundings Around);
 
-/// Colors sampled around and inside a piece of text.
-public record Palette(Rgb Top, Rgb Bottom, Rgb Text)
+public enum GradientAxis { None, Vertical, Horizontal }
+
+/// Colors sampled around and inside a piece of text. `Top`/`Bottom` are the gradient ends
+/// (left/right for a horizontal one); `Background` is the ring's most common color.
+public record Palette(Rgb Top, Rgb Bottom, Rgb Text, Rgb Background, GradientAxis Axis = GradientAxis.None)
 {
-    public bool IsGradient => Top.Dist(Bottom) >= 0.05;
-    public static readonly Palette Fallback = new(new(1, 1, 1), new(1, 1, 1), new(0.1, 0.1, 0.1));
+    public static readonly Palette Fallback = new(new(1, 1, 1), new(1, 1, 1), new(0.1, 0.1, 0.1), new(1, 1, 1));
 }
 
 public readonly record struct Rgb(double R, double G, double B)
@@ -36,6 +39,25 @@ public readonly record struct Rgb(double R, double G, double B)
     public Rgb Mix(Rgb o, double t) => new(R + (o.R - R) * t, G + (o.G - G) * t, B + (o.B - B) * t);
     public Color Color => Color.FromRgb(To8(R), To8(G), To8(B));
     static byte To8(double v) => (byte)Math.Clamp(Math.Round(v * 255), 0, 255);
+
+    static int Bucket(Rgb c) => (int)(c.R * 15.99) << 8 | (int)(c.G * 15.99) << 4 | (int)(c.B * 15.99);
+
+    /// Average of the most common 16-level color bucket.
+    public static Rgb Mode(IReadOnlyList<Rgb> s)
+    {
+        var buckets = new Dictionary<int, (int n, double r, double g, double b)>();
+        foreach (var c in s)
+        {
+            var v = buckets.GetValueOrDefault(Bucket(c));
+            buckets[Bucket(c)] = (v.n + 1, v.r + c.R, v.g + c.G, v.b + c.B);
+        }
+        if (buckets.Count == 0) return new(1, 1, 1);
+        var best = buckets.Values.MaxBy(v => v.n);
+        return new(best.r / best.n, best.g / best.n, best.b / best.n);
+    }
+
+    /// Share of the most common bucket: 1 for a flat color.
+    public static double Purity(IReadOnlyList<Rgb> s) => s.Count == 0 ? 0 : s.GroupBy(Bucket).Max(g => g.Count()) / (double)s.Count;
 
     public static Rgb Median(IReadOnlyList<Rgb> s)
     {

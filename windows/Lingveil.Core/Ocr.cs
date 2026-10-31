@@ -109,17 +109,25 @@ public static class Ocr
         }
         var full = Join(0, words.Count - 1);
         double em = Em(full, h);
+        // Toolbar and list icons next to a label come back as a stray symbol ("_ Settings",
+        // "• Inbox"): drop single non-alphanumeric words at either end, with their box.
+        bool Icon(int k) => words[k].Text.Length == 1 && !char.IsLetterOrDigit(words[k].Text[0]);
+        Line Make(int from, int to)
+        {
+            if (to > from && Icon(from)) from++;
+            if (to > from && Icon(to)) to--;
+            var r = words.Skip(from).Take(to - from + 1).Select(w => w.Rect).Aggregate(Rect.Union);
+            return new Line(Join(from, to), LineBox(new Rect(r.X, box.Y, r.Width, box.Height), full, em));
+        }
         bool wide = h > 4 && words.Count > 1 && box.Width > Measure.Width(full, em) * 1.2;
-        if (!wide) { yield return new Line(full, LineBox(box, full, em)); yield break; }
+        if (!wide) { yield return Make(0, words.Count - 1); yield break; }
         int start = 0;
         for (int k = 0; k < words.Count; k++)
         {
             bool last = k == words.Count - 1;
             if (last || words[k + 1].Rect.X - words[k].Rect.Right > em * 1.0)
             {
-                var r = words.Skip(start).Take(k - start + 1).Select(w => w.Rect).Aggregate(Rect.Union);
-                var text = Join(start, k);
-                yield return new Line(text, LineBox(new Rect(r.X, box.Y, r.Width, box.Height), full, em));
+                yield return Make(start, k);
                 start = k + 1;
             }
         }
@@ -160,6 +168,7 @@ public static class Ocr
             var last = sorted[i];
             var lefts = new List<double> { last.Rect.Left };
             var centers = new List<double> { last.Rect.Left + last.Rect.Width / 2 };
+            var heights = new List<double> { last.Rect.Height };
             for (int j = i + 1; j < sorted.Count; j++)
             {
                 if (used[j]) continue;
@@ -180,12 +189,14 @@ public static class Ocr
                     var joiner = block.IsCJK || block.Text.EndsWith('-') ? "" : " ";
                     var text = hyphen ? block.Text[..^1] : block.Text;
                     block = block with { Text = text + joiner + n.Text, Rect = Rect.Union(block.Rect, n.Rect), Lines = block.Lines + 1 };
-                    lefts.Add(n.Rect.Left); centers.Add(Mid(n.Rect));
+                    lefts.Add(n.Rect.Left); centers.Add(Mid(n.Rect)); heights.Add(n.Rect.Height);
                     last = n;
                 }
             }
             if (block.Lines > 1)
             {
+                heights.Sort();
+                block.GlyphHeight = heights[heights.Count / 2];
                 double leftSpread = lefts.Max() - lefts.Min(), centerSpread = centers.Max() - centers.Min();
                 if (centerSpread < leftSpread * 0.5) block.Align = TextAlignment.Center;
             }

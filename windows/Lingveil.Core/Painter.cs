@@ -8,99 +8,159 @@ namespace Lingveil.Core;
 /// by the headless renderer, so both draw identically. Units are points, origin top-left.
 public static class Painter
 {
-    public sealed record Laid(Rect Box, FormattedText Text);
+    /// `Box` is the painted background, `TextRect` where the text goes.
+    public sealed record Laid(Rect Box, Rect TextRect, FormattedText Text, double Size, bool Dropped);
 
-    static Typeface FaceOf(TextItem it) => it.FontFamily is { } f
-        ? new Typeface(new FontFamily(f), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal)
-        : Measure.UiFont;
+    record Ctx(IReadOnlyList<Block> Blocks, List<Rect> Rects, HashSet<int> Dropped, List<TextAlignment> Aligns, double TypicalStroke, Rect Bounds, double Ppd);
 
-    /// Lays out every block; each one may only grow into space no other block's original
-    /// text occupies, inside `bounds`.
+    /// Lays out every block: drops blocks that duplicate a better one, picks alignment from
+    /// the surroundings, fits each block, then gives one size to blocks that belong together
+    /// (a column of list rows, a menu bar).
     public static List<Laid> LayoutAll(IReadOnlyList<Block> blocks, Rect bounds, double pixelsPerDip = 1)
     {
         var rects = blocks.Select(b => b.Item.Rect).ToList();
-        return blocks.Select((b, i) => Layout(b, rects.Where((_, k) => k != i).ToList(), bounds, pixelsPerDip)).ToList();
+        // Drop a block that mostly overlaps a better one (UI Automation first, then larger).
+        var dropped = new HashSet<int>();
+        var kept = new List<int>();
+        foreach (var i in Enumerable.Range(0, blocks.Count).OrderBy(i => blocks[i].Item.FromUia ? 0 : 1).ThenByDescending(i => rects[i].Width * rects[i].Height))
+        {
+            var r = rects[i];
+            bool covered = kept.Any(j =>
+            {
+                var o = Rect.Intersect(r, rects[j]);
+                return !o.IsEmpty && o.Width * o.Height > Math.Min(r.Width * r.Height, rects[j].Width * rects[j].Height) * 0.3;
+            });
+            if (covered) dropped.Add(i); else kept.Add(i);
+        }
+        var aligns = Enumerable.Range(0, blocks.Count).Select(i => Alignment(blocks, rects, i)).ToList();
+        var strokes = blocks.Select(b => b.Around.Stroke).Where(s => s > 0).Order().ToList();
+        double typical = strokes.Count == 0 ? 0 : strokes[strokes.Count / 2];
+        var ctx = new Ctx(blocks, rects, dropped, aligns, typical, bounds, pixelsPerDip);
+        var laid = Enumerable.Range(0, blocks.Count).Select(i => Layout(ctx, i, null)).ToList();
+        // Same size for single-line blocks anchored on the same edge with the same original
+        // size: a real localized list doesn't mix sizes. The column's median caps the larger
+        // ones; one long item that had to shrink further keeps its own size.
+        var groups = new Dictionary<string, List<int>>();
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            if (blocks[i].Item.Lines != 1 || dropped.Contains(i)) continue;
+            var r = rects[i];
+            double anchor = aligns[i] == TextAlignment.Center ? r.Left + r.Width / 2 : aligns[i] == TextAlignment.Right ? r.Right : r.Left;
+            var key = $"{aligns[i]}|{Math.Round(anchor / 3)}|{Math.Round(blocks[i].Item.FontSize ?? 0)}";
+            if (!groups.TryGetValue(key, out var g)) groups[key] = g = [];
+            g.Add(i);
+        }
+        foreach (var members in groups.Values.Where(m => m.Count > 1))
+        {
+            var sizes = members.Select(i => laid[i].Size).Order().ToList();
+            double median = sizes[sizes.Count / 2];
+            foreach (var i in members) if (laid[i].Size > median + 0.25) laid[i] = Layout(ctx, i, median);
+        }
+        return laid;
     }
 
-    /// Picks a font size and box so the translation fits where the original was: shrink a
-    /// little, then widen single lines into free space, then shrink further, then run onto
-    /// extra lines below as far as free space allows (at most half the box again), then
-    /// shrink further and finally truncate.
-    public static Laid Layout(Block b, IReadOnlyList<Rect> others, Rect bounds, double pixelsPerDip = 1)
+    /// Single-line OCR text: centered when plain background stops at about the same distance
+    /// on both sides (a button, a tab); right-aligned when it shares its right edge, but not
+    /// its left, with a block just above or below (values in a settings row), or hugs a right
+    /// edge with lots of room on its left.
+    static TextAlignment Alignment(IReadOnlyList<Block> blocks, List<Rect> rects, int i)
     {
-        var it = b.Item;
+        var it = blocks[i].Item; var a = blocks[i].Around; var r = rects[i];
+        if (it.Lines > 1) return it.Align;
+        bool bothBounded = a.BoundedLeft && a.BoundedRight;
+        bool even = Math.Abs(a.Left - a.Right) < Math.Max(3, (a.Left + a.Right) * (bothBounded ? 0.3 : 0.08));
+        if (even && a.Left + a.Right > 4 && a.BoundedLeft == a.BoundedRight && a.Left > 2) return TextAlignment.Center;
+        double mid = r.Top + r.Height / 2;
+        var near = Enumerable.Range(0, rects.Count).Where(j =>
+        {
+            double d = Math.Abs(rects[j].Top + rects[j].Height / 2 - mid);
+            return j != i && d < r.Height * 4 && d > r.Height * 0.5;
+        }).ToList();
+        bool sharesRight = near.Any(j => Math.Abs(rects[j].Right - r.Right) < 2.5 && Math.Abs(rects[j].Left - r.Left) > 6);
+        bool sharesLeft = near.Any(j => Math.Abs(rects[j].Left - r.Left) < 2.5);
+        if (sharesRight && !sharesLeft) return TextAlignment.Right;
+        if (a.BoundedRight && a.Right < it.LineHeight * 0.6 && a.Left > it.LineHeight * 3 && it.Align == TextAlignment.Left) return TextAlignment.Right;
+        return it.Align;
+    }
+
+    static Laid Layout(Ctx c, int i, double? cap)
+    {
+        var b = c.Blocks[i]; var it = b.Item; var a = b.Around; var align = c.Aligns[i];
+        var orig = c.Rects[i];
         double lh = it.LineHeight;
+        // Weight relative to the screen's typical stroke: absolute stroke width varies too much
+        // with size and anti-aliasing to tell regular from bold on its own.
+        double ratio = c.TypicalStroke > 0 ? a.Stroke / c.TypicalStroke : 1;
+        var weight = it.FontFamily != null ? FontWeights.Normal : ratio >= 1.75 ? FontWeights.Bold : ratio >= 1.45 ? FontWeights.SemiBold : FontWeights.Normal;
+        var face = new Typeface(new FontFamily(it.FontFamily ?? "Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal);
         double baseSize = it.FontSize ?? Math.Max(8, lh * 0.8);
-        double padX = Math.Max(2, lh * 0.18), padY = Math.Max(1, lh * 0.1);
-        var rect = it.Rect;
-        rect.Inflate(padX, padY);
-        var face = FaceOf(it);
+        var others = Enumerable.Range(0, c.Rects.Count).Where(j => j != i && !c.Dropped.Contains(j)).Select(j => c.Rects[j]).ToList();
         var brush = new SolidColorBrush(b.Palette.Text.Color);
         brush.Freeze();
-        FormattedText Make(double size, double width)
+        FormattedText Make(double size, double? width) => new(b.Translation, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, brush, c.Ppd)
         {
-            var t = new FormattedText(b.Translation, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, brush, pixelsPerDip)
-            {
-                MaxTextWidth = Math.Max(1, width - 2),
-                TextAlignment = it.Align,
-                Trimming = TextTrimming.None,
-            };
-            return t;
-        }
-        double tolerance = rect.Height * 1.06;
-        // Fallback fonts (Nirmala UI for Devanagari, Yu Gothic for Japanese) have taller lines
-        // than the box OCR measured, so text also fits when it takes no more lines than the original.
-        bool Fits(FormattedText t, double size)
+            MaxTextWidth = width is { } w ? Math.Max(1, w) : 0,
+            TextAlignment = width != null ? align : TextAlignment.Left,
+            Trimming = TextTrimming.None,
+        };
+        double bandTop = orig.Top + orig.Height * 0.25, bandBottom = orig.Bottom - orig.Height * 0.25;
+        var inRow = others.Where(o => o.Top < bandBottom && o.Bottom > bandTop).ToList();
+        // A gap shared with a neighbour in the same row is split between the two, since its
+        // translation may grow into the same gap (menu bars, toolbars).
+        double freeRight = Math.Min(Math.Min(a.Right, inRow.Where(o => o.Left >= orig.Right - 1).Select(o => (o.Left - orig.Right) / 2 - 1).DefaultIfEmpty(double.PositiveInfinity).Min()), c.Bounds.Right - orig.Right);
+        double freeLeft = Math.Min(Math.Min(a.Left, inRow.Where(o => o.Right <= orig.Left + 1).Select(o => (orig.Left - o.Right) / 2 - 1).DefaultIfEmpty(double.PositiveInfinity).Min()), orig.Left - c.Bounds.Left);
+        double size = Math.Min(baseSize, cap ?? double.PositiveInfinity);
+        var textRect = orig;
+        FormattedText s;
+        if (it.Lines == 1)
         {
-            if (t.Height <= tolerance) return true;
-            double one = new FormattedText("Xg", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, brush, pixelsPerDip).Height;
-            var single = new FormattedText(b.Translation, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, brush, pixelsPerDip).Height;
-            return Math.Round(t.Height / Math.Max(one, single)) <= it.Lines;
-        }
-        double size = baseSize, floor1 = baseSize * 0.76;
-        while (size > floor1 && !Fits(Make(size, rect.Width), size)) size -= 0.5;
-        var s = Make(size, rect.Width);
-        if (!Fits(s, size) && it.Lines == 1)
-        {
-            // Single line that still doesn't fit: let it grow sideways (up to 60%), but only
-            // into free space and never past the edge of the screen.
-            var one = new FormattedText(b.Translation, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, brush, pixelsPerDip);
-            double grow = Math.Min(one.WidthIncludingTrailingWhitespace + 4, rect.Width * 1.6) - rect.Width;
-            double bandTop = rect.Top + rect.Height * 0.25, bandBottom = rect.Bottom - rect.Height * 0.25;
-            bool InBand(Rect o) => o.Top < bandBottom && o.Bottom > bandTop;
-            double right = others.Where(o => o.Left >= rect.Right - 1 && InBand(o)).Select(o => o.Left - rect.Right).DefaultIfEmpty(double.PositiveInfinity).Min();
-            if (it.Align == TextAlignment.Center)
-            {
-                double left = others.Where(o => o.Right <= rect.Left && InBand(o)).Select(o => rect.Left - o.Right).DefaultIfEmpty(double.PositiveInfinity).Min();
-                grow = Math.Min(grow, 2 * Math.Max(0, Math.Min(Math.Min(left, right), Math.Min(rect.Left - bounds.Left, bounds.Right - rect.Right)) - 2));
-                rect.X -= Math.Max(0, grow) / 2;
-            }
-            else grow = Math.Min(grow, Math.Max(0, Math.Min(right, bounds.Right - rect.Right) - 2));
-            if (grow > 0)
-            {
-                rect.Width += grow;
-                s = Make(size, rect.Width);
-            }
-        }
-        while (!Fits(s, size) && size > Math.Max(7, baseSize * 0.7)) { size -= 0.5; s = Make(size, rect.Width); }
-        // Still too long: run onto extra lines below, as far as the next text below allows (at
-        // most half the box again); past that, shrink further and finally truncate.
-        double below = others.Where(o => o.Top >= rect.Bottom - 1 && o.Left < rect.Right && o.Right > rect.Left)
-            .Select(o => o.Top - rect.Bottom).DefaultIfEmpty(bounds.Bottom - rect.Bottom).Min();
-        double room = Math.Max(0, Math.Min(below - 2, rect.Height * 0.5));
-        while (s.Height + 2 > rect.Height + room && !Fits(s, size) && size > Math.Max(7, baseSize * 0.55)) { size -= 0.5; s = Make(size, rect.Width); }
-        double need = Math.Min(s.Height + 2, rect.Height + room);
-        if (s.Height + 2 > rect.Height + room && !Fits(s, size))
-        {
-            s.MaxTextHeight = Math.Max(1, need - 2);
+            double Width(double sz) => Math.Ceiling(Make(sz, null).WidthIncludingTrailingWhitespace) + 1;
+            // Widen into measured free background first (up to 2.5×, on the side the alignment
+            // allows), and only then shrink what still doesn't fit. A one-line label never wraps.
+            double maxGrow = Math.Max(orig.Width * 1.5, lh * 4);
+            double room = align == TextAlignment.Center ? 2 * Math.Max(0, Math.Min(freeLeft, freeRight))
+                        : align == TextAlignment.Right ? Math.Max(0, freeLeft) : Math.Max(0, freeRight);
+            double grow = Math.Max(0, Math.Min(Math.Min(Width(size) - orig.Width, maxGrow), room));
+            textRect.Width += grow;
+            if (align == TextAlignment.Center) textRect.X -= grow / 2; else if (align == TextAlignment.Right) textRect.X -= grow;
+            while (Width(size) > textRect.Width && size > Math.Max(7, baseSize * 0.6)) size -= 0.5;
+            s = Make(size, textRect.Width);
+            s.MaxLineCount = 1;
             s.Trimming = TextTrimming.CharacterEllipsis;
+            // One line of the font's own height, centered on the original line.
+            double lineH = Math.Ceiling(Make(size, null).Height);
+            textRect = new Rect(textRect.X, Math.Round(orig.Top + orig.Height / 2 - lineH / 2), textRect.Width, lineH);
         }
-        if (need > rect.Height) rect.Height = need;   // grows downward
-        return new Laid(new Rect(Math.Floor(rect.X), Math.Floor(rect.Y), Math.Ceiling(rect.Width), Math.Ceiling(rect.Height)), s);
+        else
+        {
+            double tolerance = orig.Height * 1.06;
+            s = Make(size, textRect.Width);
+            while (s.Height > tolerance && size > Math.Max(7, baseSize * 0.7)) { size -= 0.5; s = Make(size, textRect.Width); }
+            // Grow downward only into free background, never onto the next text below.
+            double below = others.Where(o => o.Top >= orig.Bottom - 1 && o.Left < orig.Right && o.Right > orig.Left)
+                .Select(o => o.Top - orig.Bottom - 2).DefaultIfEmpty(c.Bounds.Bottom - orig.Bottom).Min();
+            double room = Math.Max(0, Math.Min(Math.Min(below, a.Down), orig.Height * 0.5));
+            while (s.Height > orig.Height + room && size > Math.Max(7, baseSize * 0.55)) { size -= 0.5; s = Make(size, textRect.Width); }
+            double h = Math.Min(s.Height, orig.Height + room);
+            if (s.Height > h) { s.MaxTextHeight = h; s.Trimming = TextTrimming.CharacterEllipsis; }
+            // Paragraphs start at the original first line.
+            textRect = new Rect(orig.X, orig.Top, orig.Width, h);
+        }
+        // Background: the text area plus padding that stops at any border around it.
+        double padX = Math.Max(2, lh * 0.18), padY = Math.Max(1, lh * 0.1);
+        var fill = Rect.Union(textRect, orig);
+        double addLeft = Math.Min(padX, Math.Max(0, freeLeft - (orig.Left - fill.Left)));
+        double addRight = Math.Min(padX, Math.Max(0, freeRight - (fill.Right - orig.Right)));
+        fill.X -= addLeft; fill.Width += addLeft + addRight;
+        double addDown = Math.Min(padY, a.Down + 1), addUp = Math.Min(padY, a.Up + 1);
+        fill.Y -= addUp; fill.Height += addUp + addDown;
+        var box = new Rect(Math.Floor(fill.X), Math.Floor(fill.Y), Math.Ceiling(fill.Right) - Math.Floor(fill.X), Math.Ceiling(fill.Bottom) - Math.Floor(fill.Y));
+        return new Laid(box, textRect, s, size, c.Dropped.Contains(i));
     }
 
     public static void Draw(DrawingContext dc, Block b, Laid l, OverlayStyle style)
     {
+        if (l.Dropped) return;
         var p = b.Palette;
         var r = l.Box;
         bool card = style == OverlayStyle.Card;
@@ -114,14 +174,16 @@ public static class Painter
                 dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb((byte)(22 / k), 0, 0, 0)), null, sr, radius + k, radius + k);
             }
         }
-        Brush fill = p.IsGradient && !card
-            ? new LinearGradientBrush(p.Top.Color, p.Bottom.Color, 90)
-            : new SolidColorBrush(p.Top.Color);
+        Brush fill = (card ? GradientAxis.None : p.Axis) switch
+        {
+            GradientAxis.Vertical => new LinearGradientBrush(p.Top.Color, p.Bottom.Color, 90),
+            GradientAxis.Horizontal => new LinearGradientBrush(p.Top.Color, p.Bottom.Color, 0),
+            _ => new SolidColorBrush(p.Background.Color),
+        };
         Pen? border = card ? new Pen(new SolidColorBrush(Color.FromArgb(46, p.Text.Color.R, p.Text.Color.G, p.Text.Color.B)), 0.5) : null;
         dc.DrawRoundedRectangle(fill, border, r, radius, radius);
-        double h = Math.Min(l.Text.Height, r.Height);
-        dc.PushClip(new RectangleGeometry(r));
-        dc.DrawText(l.Text, new Point(r.X + 1, r.Y + (r.Height - h) / 2));
+        dc.PushClip(new RectangleGeometry(Rect.Union(r, l.TextRect)));
+        dc.DrawText(l.Text, l.TextRect.TopLeft);
         dc.Pop();
     }
 
