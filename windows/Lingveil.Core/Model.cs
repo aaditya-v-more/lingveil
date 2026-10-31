@@ -13,6 +13,7 @@ public record struct TextItem(string Text, Rect Rect, int Lines)
     public TextAlignment Align { get; set; } = TextAlignment.Left;
     public bool FromUia { get; set; }
     public double? GlyphHeight { get; set; }    // median height of the single OCR lines a paragraph was merged from
+    public double? LinesWidth { get; set; }     // summed width of those lines
 
     public readonly double LineHeight => Rect.Height / Math.Max(1, Lines);
     public readonly bool IsCJK => Text.Any(c => c is >= '぀' and <= '鿿' || c is >= '가' and <= '힯');

@@ -119,7 +119,14 @@ public static class Pipeline
             // includes the app's line spacing.
             double byHeight = (it.Lines > 1 ? it.GlyphHeight ?? it.LineHeight / 1.2 : it.LineHeight) * 0.8;
             double size = byHeight;
-            if (it.Lines == 1 && it.Text.Length >= 4)
+            if (it.Lines > 1)
+            {
+                // Paragraph: the width its text takes, summed over its lines.
+                double w = Measure.Width(it.Text, 20);
+                double filled = it.LinesWidth ?? it.Rect.Width * (it.Lines - 0.4);
+                if (w > 0) size = Math.Min(Math.Max(20 * filled / w, byHeight * 0.6), byHeight * 1.1);
+            }
+            else if (it.Text.Length >= 4)
             {
                 // Width is steadier than height (which swings with ascenders and descenders).
                 double w = Measure.Width(it.Text, 20);
@@ -128,13 +135,16 @@ public static class Pipeline
             it.FontSize = Math.Max(7, size);
             return it;
         }).ToList();
-        var sizes = outItems.Select(i => i.FontSize!.Value).Order().ToList();
+        // Snap single lines only (paragraphs keep their own estimate), in clusters that stay
+        // within 12% of their smallest member so a chain of steps can't drift upward.
+        var sizes = outItems.Where(i => i.Lines == 1).Select(i => i.FontSize!.Value).Order().ToList();
         var clusters = new List<List<double>>();
         foreach (var s in sizes)
-            if (clusters.Count > 0 && s <= clusters[^1][^1] * 1.1) clusters[^1].Add(s); else clusters.Add([s]);
+            if (clusters.Count > 0 && s <= clusters[^1][0] * 1.12) clusters[^1].Add(s); else clusters.Add([s]);
         for (int i = 0; i < outItems.Count; i++)
         {
             var it = outItems[i];
+            if (it.Lines != 1) continue;
             var c = clusters.First(c => c.Contains(it.FontSize!.Value));
             it.FontSize = Math.Round(c[c.Count / 2] * 2) / 2;
             outItems[i] = it;

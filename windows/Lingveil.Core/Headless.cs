@@ -31,7 +31,7 @@ public static class Headless
         Console.WriteLine($"items {items.Count}  blocks {blocks.Count}  ocr {ocrMs} ms  translate+colors {sw.ElapsedMilliseconds - ocrMs} ms  ({Pipeline.Timings})");
         foreach (var b in blocks)
             Console.WriteLine($"• {b.Item.Lines} {(int)b.Item.Rect.X} {(int)b.Item.Rect.Y} {(int)b.Item.Rect.Width} {(int)b.Item.Rect.Height} {b.Item.FontSize:0.#}pt {Cut(b.Item.Text)} → {Cut(b.Translation)}");
-        foreach (var it in items.Where(i => !blocks.Any(b => b.Item == i)))
+        foreach (var it in items.Where(i => !blocks.Any(b => b.Item.Text == i.Text)))
             Console.WriteLine($"  (kept) {(int)it.Rect.X} {(int)it.Rect.Y} {(int)it.Rect.Width} {(int)it.Rect.Height} {Cut(it.Text)}");
         Write(snap, blocks, output);
         return 0;

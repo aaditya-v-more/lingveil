@@ -169,6 +169,7 @@ public static class Ocr
             var lefts = new List<double> { last.Rect.Left };
             var centers = new List<double> { last.Rect.Left + last.Rect.Width / 2 };
             var heights = new List<double> { last.Rect.Height };
+            var widths = new List<double> { last.Rect.Width };
             for (int j = i + 1; j < sorted.Count; j++)
             {
                 if (used[j]) continue;
@@ -189,7 +190,7 @@ public static class Ocr
                     var joiner = block.IsCJK || block.Text.EndsWith('-') ? "" : " ";
                     var text = hyphen ? block.Text[..^1] : block.Text;
                     block = block with { Text = text + joiner + n.Text, Rect = Rect.Union(block.Rect, n.Rect), Lines = block.Lines + 1 };
-                    lefts.Add(n.Rect.Left); centers.Add(Mid(n.Rect)); heights.Add(n.Rect.Height);
+                    lefts.Add(n.Rect.Left); centers.Add(Mid(n.Rect)); heights.Add(n.Rect.Height); widths.Add(n.Rect.Width);
                     last = n;
                 }
             }
@@ -197,6 +198,7 @@ public static class Ocr
             {
                 heights.Sort();
                 block.GlyphHeight = heights[heights.Count / 2];
+                block.LinesWidth = widths.Sum();
                 double leftSpread = lefts.Max() - lefts.Min(), centerSpread = centers.Max() - centers.Min();
                 if (centerSpread < leftSpread * 0.5) block.Align = TextAlignment.Center;
             }

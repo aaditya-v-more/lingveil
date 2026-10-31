@@ -142,9 +142,10 @@ public static class Painter
             double room = Math.Max(0, Math.Min(Math.Min(below, a.Down), orig.Height * 0.5));
             while (s.Height > orig.Height + room && size > Math.Max(7, baseSize * 0.55)) { size -= 0.5; s = Make(size, textRect.Width); }
             double h = Math.Min(s.Height, orig.Height + room);
-            if (s.Height > h) { s.MaxTextHeight = h; s.Trimming = TextTrimming.CharacterEllipsis; }
+            // A little slack below: line layout can need a point more than measured.
+            if (s.Height > h + 3) { s.MaxTextHeight = h + 3; s.Trimming = TextTrimming.CharacterEllipsis; }
             // Paragraphs start at the original first line.
-            textRect = new Rect(orig.X, orig.Top, orig.Width, h);
+            textRect = new Rect(orig.X, orig.Top, orig.Width, h + 3);
         }
         // Background: the text area plus padding that stops at any border around it.
         double padX = Math.Max(2, lh * 0.18), padY = Math.Max(1, lh * 0.1);
