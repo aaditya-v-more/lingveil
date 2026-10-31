@@ -26,20 +26,27 @@ public static class Pipeline
         foreach (var a0 in ax)
         {
             var a = a0;
-            var under = seen.Where(o => Overlap(o.Rect, a.Rect) > o.Rect.Width * o.Rect.Height * 0.5).ToList();
-            if (under.Count == 0) continue;
-            // UI Automation gives element frames (a whole button), not glyph bounds, and no
-            // font: take the box and size from the OCR text inside it, keep the exact string.
-            if (a.FontSize == null)
+            // OCR text lying inside the element (≥ 50% of its area) proves it is visible.
+            var inside = seen.Where(o => Overlap(o.Rect, a.Rect) >= o.Rect.Width * o.Rect.Height * 0.5).ToList();
+            if (inside.Count == 0) continue;
+            a.Lines = inside.Sum(o => o.Lines);
+            var ocrSize = inside.Select(o => o.FontSize ?? 0).Order().ElementAt(inside.Count / 2);
+            // UI Automation gives element frames (a whole button), not glyph bounds, and no font:
+            // the box and size come from the OCR text inside it; the string stays exact. Unlike
+            // the Mac's tight AX bounds, the element frame is never part of the box.
+            if (a.FontSize is not { } fs || fs < ocrSize * 0.6 || fs > ocrSize * 1.6)
             {
-                a.Rect = under.Select(o => o.Rect).Aggregate(Rect.Union);
-                a.Lines = under.Sum(o => o.Lines);
-                a.FontSize = under[0].FontSize;
-                a.Align = under.Count == 1 ? under[0].Align : a.Align;
+                a.Rect = inside.Select(o => o.Rect).Aggregate(Rect.Union);
+                a.FontSize = ocrSize;
+                if (inside.Count == 1) a.Align = inside[0].Align;
             }
             if (!axValid.Any(v => v.Text == a.Text && Overlap(v.Rect, a.Rect) > a.Rect.Width * a.Rect.Height * 0.5)) axValid.Add(a);
         }
-        var extra = seen.Where(o => !axValid.Any(a => Overlap(a.Rect, o.Rect) > o.Rect.Width * o.Rect.Height * 0.25));
+        var extra = seen.Where(o =>
+        {
+            double area = o.Rect.Width * o.Rect.Height;
+            return !axValid.Any(a => Overlap(a.Rect, o.Rect) > area * 0.25) && !ax.Any(a => Overlap(a.Rect, o.Rect) > area * 0.5);
+        });
         return [.. axValid, .. extra];
     }
 

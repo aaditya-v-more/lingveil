@@ -14,10 +14,19 @@ public static class Painter
         ? new Typeface(new FontFamily(f), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal)
         : Measure.UiFont;
 
+    /// Lays out every block; each one may only grow into space no other block's original
+    /// text occupies, inside `bounds`.
+    public static List<Laid> LayoutAll(IReadOnlyList<Block> blocks, Rect bounds, double pixelsPerDip = 1)
+    {
+        var rects = blocks.Select(b => b.Item.Rect).ToList();
+        return blocks.Select((b, i) => Layout(b, rects.Where((_, k) => k != i).ToList(), bounds, pixelsPerDip)).ToList();
+    }
+
     /// Picks a font size and box so the translation fits where the original was: shrink a
-    /// little, then widen single lines into free space, then shrink further, then let it run
-    /// onto extra lines below rather than cut it off.
-    public static Laid Layout(Block b, double pixelsPerDip = 1)
+    /// little, then widen single lines into free space, then shrink further, then run onto
+    /// extra lines below as far as free space allows (at most half the box again), then
+    /// shrink further and finally truncate.
+    public static Laid Layout(Block b, IReadOnlyList<Rect> others, Rect bounds, double pixelsPerDip = 1)
     {
         var it = b.Item;
         double lh = it.LineHeight;
@@ -53,18 +62,39 @@ public static class Painter
         var s = Make(size, rect.Width);
         if (!Fits(s, size) && it.Lines == 1)
         {
-            // Single line that still doesn't fit: let it grow sideways (up to 60%).
+            // Single line that still doesn't fit: let it grow sideways (up to 60%), but only
+            // into free space and never past the edge of the screen.
             var one = new FormattedText(b.Translation, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, brush, pixelsPerDip);
             double grow = Math.Min(one.WidthIncludingTrailingWhitespace + 4, rect.Width * 1.6) - rect.Width;
+            double bandTop = rect.Top + rect.Height * 0.25, bandBottom = rect.Bottom - rect.Height * 0.25;
+            bool InBand(Rect o) => o.Top < bandBottom && o.Bottom > bandTop;
+            double right = others.Where(o => o.Left >= rect.Right - 1 && InBand(o)).Select(o => o.Left - rect.Right).DefaultIfEmpty(double.PositiveInfinity).Min();
+            if (it.Align == TextAlignment.Center)
+            {
+                double left = others.Where(o => o.Right <= rect.Left && InBand(o)).Select(o => rect.Left - o.Right).DefaultIfEmpty(double.PositiveInfinity).Min();
+                grow = Math.Min(grow, 2 * Math.Max(0, Math.Min(Math.Min(left, right), Math.Min(rect.Left - bounds.Left, bounds.Right - rect.Right)) - 2));
+                rect.X -= Math.Max(0, grow) / 2;
+            }
+            else grow = Math.Min(grow, Math.Max(0, Math.Min(right, bounds.Right - rect.Right) - 2));
             if (grow > 0)
             {
                 rect.Width += grow;
-                if (it.Align == TextAlignment.Center) rect.X -= grow / 2;
                 s = Make(size, rect.Width);
             }
         }
         while (!Fits(s, size) && size > Math.Max(7, baseSize * 0.7)) { size -= 0.5; s = Make(size, rect.Width); }
-        double need = s.Height + 2;
+        // Still too long: run onto extra lines below, as far as the next text below allows (at
+        // most half the box again); past that, shrink further and finally truncate.
+        double below = others.Where(o => o.Top >= rect.Bottom - 1 && o.Left < rect.Right && o.Right > rect.Left)
+            .Select(o => o.Top - rect.Bottom).DefaultIfEmpty(bounds.Bottom - rect.Bottom).Min();
+        double room = Math.Max(0, Math.Min(below - 2, rect.Height * 0.5));
+        while (s.Height + 2 > rect.Height + room && !Fits(s, size) && size > Math.Max(7, baseSize * 0.55)) { size -= 0.5; s = Make(size, rect.Width); }
+        double need = Math.Min(s.Height + 2, rect.Height + room);
+        if (s.Height + 2 > rect.Height + room && !Fits(s, size))
+        {
+            s.MaxTextHeight = Math.Max(1, need - 2);
+            s.Trimming = TextTrimming.CharacterEllipsis;
+        }
         if (need > rect.Height) rect.Height = need;   // grows downward
         return new Laid(new Rect(Math.Floor(rect.X), Math.Floor(rect.Y), Math.Ceiling(rect.Width), Math.Ceiling(rect.Height)), s);
     }
@@ -95,9 +125,10 @@ public static class Painter
         dc.Pop();
     }
 
-    public static void DrawAll(DrawingContext dc, IEnumerable<Block> blocks, OverlayStyle style, double pixelsPerDip = 1)
+    public static void DrawAll(DrawingContext dc, IReadOnlyList<Block> blocks, Rect bounds, OverlayStyle style, double pixelsPerDip = 1)
     {
-        foreach (var b in blocks) Draw(dc, b, Layout(b, pixelsPerDip), style);
+        var laid = LayoutAll(blocks, bounds, pixelsPerDip);
+        for (int i = 0; i < blocks.Count; i++) Draw(dc, blocks[i], laid[i], style);
     }
 
     /// A dark pill near the top of an area, for "Translating…" and errors.

@@ -48,7 +48,8 @@ public sealed record LocalModel(string Id, string Name, string Maker, string Sum
 /// `<file>.part` and only count once the sha256 matches.
 public static class ModelStore
 {
-    public static string Folder { get; } = Directory.CreateDirectory(Path.Combine(
+    /// LINGVEIL_MODELS_DIR overrides the folder (tests, a bigger drive).
+    public static string Folder { get; } = Directory.CreateDirectory(Environment.GetEnvironmentVariable("LINGVEIL_MODELS_DIR") ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lingveil", "Models")).FullName;
 
     public static string PathOf(LocalModel m) => Path.Combine(Folder, m.File);

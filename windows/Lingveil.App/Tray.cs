@@ -18,6 +18,8 @@ public static class Tray
         ("screen", "Translate Screen", "Alt+Shift+T", () => OneShot.Shared.ToggleScreen()),
         ("area", "Translate Area…", "Alt+Shift+A", () => OneShot.Shared.Area()),
         ("live", "Live Translate Area…", "Alt+Shift+L", () => Live.Shared.Toggle()),
+        ("cursor", "Translate Under Pointer", "Alt+Shift+D", () => Bubble.Shared.UnderPointer()),
+        ("selection", "Translate Selected Text", "Alt+Shift+S", () => Bubble.Shared.Selection()),
     ];
 
     public static int Run()

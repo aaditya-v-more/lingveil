@@ -47,7 +47,7 @@ public static class Headless
         using (var dc = v.RenderOpen())
         {
             dc.DrawImage(src, new Rect(snap.Size));
-            Painter.DrawAll(dc, blocks, Settings.Current.Style, snap.Scale);
+            Painter.DrawAll(dc, blocks.ToList(), new Rect(snap.Size), Settings.Current.Style, snap.Scale);
         }
         var rtb = new RenderTargetBitmap(snap.Pixels.Width, snap.Pixels.Height, 96 * snap.Scale, 96 * snap.Scale, PixelFormats.Pbgra32);
         rtb.Render(v);

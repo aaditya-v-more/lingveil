@@ -80,7 +80,7 @@ public sealed class OverlayView : FrameworkElement
         {
             blocks = [.. value];
             double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-            laid = blocks.Select(b => Painter.Layout(b, ppd)).ToList();
+            laid = Painter.LayoutAll(blocks, new Rect(0, 0, ActualWidth, ActualHeight), ppd);
             hovered = null; showOriginal = false;
             InvalidateVisual();
         }

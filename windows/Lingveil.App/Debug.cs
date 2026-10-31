@@ -36,9 +36,13 @@ public static class Debug
         if (cmd.Length == 0) return;
         var parts = cmd.Split('|');
         var name = parts[0];
-        if (parts.Length > 1 && parts[1].Split(',').Select(int.Parse).ToArray() is { Length: 4 } v) RegionPicker.DebugRect = new Int32Rect(v[0], v[1], v[2], v[3]);
+        if (parts.Length > 1 && parts[1].Split(',').Select(int.Parse).ToArray() is { Length: 4 } v)
+        {
+            RegionPicker.DebugRect = new Int32Rect(v[0], v[1], v[2], v[3]);
+            Bubble.DebugPoint = new Native.POINT { X = v[0], Y = v[1] };
+        }
         Log("cmd " + cmd);
-        if (name == "stop") { Live.Shared.Stop(); OneShot.Shared.Dismiss(); return; }
+        if (name == "stop") { Live.Shared.Stop(); OneShot.Shared.Dismiss(); Bubble.Shared.Close(); return; }
         if (name == "memory")
         {
             var p = Process.GetCurrentProcess();
@@ -52,6 +56,7 @@ public static class Debug
         {
             "screen" or "area" => OneShot.Shared.DebugTimings.Length > 0 || OneShot.Shared.DebugView?.Status?.StartsWith("Nothing") == true,
             "live" => Live.Shared.DebugView?.Blocks.Count > 0,
+            "cursor" or "selection" => Bubble.Shared.DebugText != null,
             _ => true,
         };
         for (int i = 0; i < 600 && !Done(); i++) await Task.Delay(50);
@@ -59,16 +64,17 @@ public static class Debug
         var view = name == "live" ? Live.Shared.DebugView : OneShot.Shared.DebugView;
         foreach (var b in view?.Blocks ?? [])
             log += $"{(b.Item.FromUia ? "UIA" : "OCR")} {(int)b.Item.Rect.X},{(int)b.Item.Rect.Y} {Cut(b.Item.Text)} -> {Cut(b.Translation)}\n";
+        if (Bubble.Shared.DebugText is { } bt) log += "bubble: " + bt + "\n";
         await Task.Delay(300);
         // Save the monitor with our overlay in it: lift the capture exclusion for one frame.
-        var overlays = Application.Current.Windows.OfType<OverlayWindow>().ToList();
-        foreach (var o in overlays) Native.SetWindowDisplayAffinity(o.Handle, Native.WDA_NONE);
+        var overlays = Application.Current.Windows.Cast<Window>().Select(w => new System.Windows.Interop.WindowInteropHelper(w).Handle).ToList();
+        foreach (var o in overlays) Native.SetWindowDisplayAffinity(o, Native.WDA_NONE);
         await Task.Delay(100);
         var mon = Native.UnderCursor;
         using (var px = Native.Capture(mon.Bounds))
         using (var snap = new Snapshot(px, mon.Scale))
             Headless.Write(snap, [], Path.Combine(Dir!, name + ".png"));
-        foreach (var o in overlays) Native.ExcludeFromCapture(o.Handle);
+        foreach (var o in overlays) Native.ExcludeFromCapture(o);
         File.WriteAllText(Path.Combine(Dir!, name + ".txt"), log);
     }
 

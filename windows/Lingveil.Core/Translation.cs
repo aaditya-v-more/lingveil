@@ -75,7 +75,9 @@ public static class Translation
     {
         var m = LocalModel.Named(Settings.Current.EffectiveLocalModel);
         if (m == null || !ModelStore.IsInstalled(m))
-            throw new LingveilException("You're offline. Download a model in Settings → Models to translate without internet");
+            throw new LingveilException(Settings.Current.EffectiveEngine == EngineKind.Local
+                ? $"Download {m?.Name ?? "a model"} in Settings → Models first"
+                : "You're offline. Download a model in Settings → Models to translate without internet");
         if (!m.Supports(target)) throw new LingveilException($"{m.Name} can't translate into {target.Name}");
         return new LocalTranslator(m).Translate(texts, target, ct);
     }
