@@ -55,6 +55,30 @@ A full text-heavy screen (about 100 blocks, mostly long English paragraphs, into
 takes about 30 s with Index-Translate 2B on this Mac, painted progressively starting with
 the front window; Google does the same screen in under a second.
 
+## Read-aloud voices
+
+`bench/voices.py` speaks the six sentences in `bench/speak/<lang>.txt` with each voice,
+then transcribes the audio with whisper.cpp (large-v3-turbo). Speed is the real-time
+factor (time to make the audio ÷ its length); clarity is the character error rate of the
+transcript against the text. Apple M-series, 4 threads, sherpa-onnx 1.13.8.
+
+| Voice | English RTF / error | Hindi | Japanese | Memory |
+|---|---|---|---|---|
+| Google (sfg, google-tts-local) | 0.02 / 0% | — | — | — |
+| Apple (Daniel Enhanced, Lekha) | 0.12 / 1.3% | 0.10 / 18.8% | — | — |
+| Supertonic 3 | 0.14 / 0% | 0.14 / 14.4% | 0.14 / 2.4% | ~370 MB |
+| Kokoro (int8) | 0.58 / 1.3% | 0.55 / 15.9% | 0.67 / 69.8%\* | ~550 MB |
+| Piper Hindi (Rohan) | — | 0.14 / 6.5% | — | ~150 MB |
+| Piper English (Amy) | 0.09 / 1.3% | — | — | ~135 MB |
+| Kitten Nano | 0.18 / 0% | — | — | ~190 MB |
+
+\* Kokoro's Japanese came back mostly wrong, so Japanese is not offered for it.
+
+```sh
+python3 bench/voices.py --whisper <ggml model>   # writes bench/voices.json
+python3 bench/rate.py                            # writes the ratings into shared/voices.json
+```
+
 ## Running it
 
 ```sh

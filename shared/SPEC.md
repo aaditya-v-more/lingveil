@@ -253,6 +253,30 @@ Windows:
 - Google voices: Settings → Voices → Install runs google-tts-local's installer
   (Mac: Homebrew formula; Windows: its Windows build when ready) and adds a "Google" plugin
   pointing at 127.0.0.1:5591.
+- Narration models (`shared/voices.json`): open-source voices run through sherpa-onnx
+  **1.13.8** (2.x dropped espeak-ng, which Piper, Kitten and Kokoro need). The runtime is
+  downloaded with the first model (Mac: `runtime.mac-arm64`, keep only the listed
+  libraries; Windows: the matching win-x64 shared build) into `<app data>/Voices/runtime`;
+  each model's .tar.bz2 is checked against `sha256` and unpacked to `<app data>/Voices/<id>/`.
+  Deleting the last model deletes the runtime too.
+- Helper protocol (Mac: `Sources/Helpers/tts.c`, a small C program that loads the runtime
+  with dlopen): `lingveil-tts <runtime dir> <kind> <model dir> <threads>`, where kind is
+  vits | kokoro | kitten | supertonic. Stdin, one request per line:
+  `<speaker>\t<speed>\t<language>\t<text>\n` (tabs/newlines in text become spaces). Stdout
+  per request: int32 sample rate, int32 sample count (-1 = error), then float32 samples
+  (little-endian). It exits after 2 idle minutes or when stdin closes, so no guard process
+  is needed. Kokoro reloads when the language changes (its pronunciation language is fixed
+  at load). One helper per model.
+- Speaker: `speakers[language] ?? speakers[base] ?? speakers.default`. Split each segment
+  into sentences; make sentence n+1 while n plays, and the next segment's first sentence ahead.
+- Which model reads a language: the chosen one, unless another downloaded model's measured
+  `errorRate[lang]` is under half of the chosen one's; if the chosen model doesn't speak the
+  language, the downloaded model with the lowest `errorRate` (or highest clarity); else the
+  OS voice.
+- Ratings come only from `bench/voices.py` → `bench/voices.json` → `bench/rate.py`: speed
+  from real-time factor (≤0.05: 5, ≤0.15: 4, ≤0.3: 3, ≤0.6: 2), clarity from whisper
+  character error rate averaged over tested languages (≤2%: 5, ≤5%: 4, ≤10%: 3, ≤20%: 2).
+  Unmeasured models show "not rated". Recommended ones are listed first.
 
 ### 2.15 Tutorial and tips
 - First launch: a 7-page tour (welcome + permissions with live status, translate, read

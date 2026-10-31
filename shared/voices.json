@@ -1,0 +1,289 @@
+{
+  "about": "Read-aloud engines. 'models' are open-source narration models run on this computer through sherpa-onnx (downloaded on demand). Ratings are computed by bench/rate.py from bench/voices.json: speed from real-time factor, clarity from how well a speech recognizer transcribes the audio. 'apple'/'google' name the voices benchmarked for comparison.",
+  "runtime": {
+    "version": "1.13.8",
+    "mac-arm64": {
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-arm64-shared.tar.bz2",
+      "sha256": "b10e5c7e2c30ea03de9c442655d14860d9edc475c6251d58a8f5f06e913a1d56",
+      "bytes": 20300000,
+      "keep": [
+        "lib/libsherpa-onnx-c-api.dylib",
+        "lib/libonnxruntime.dylib"
+      ]
+    },
+    "why": "1.13.x still includes its own pronunciation engine (espeak-ng), which Piper, Kitten and Kokoro need; 2.x removed it."
+  },
+  "apple": {
+    "en": "Daniel (Enhanced)",
+    "hi": "Lekha"
+  },
+  "google": {
+    "en": "en-us-x-multi/sfg"
+  },
+  "models": [
+    {
+      "id": "sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+      "name": "Supertonic 3",
+      "maker": "Supertone",
+      "kind": "supertonic",
+      "summary": "One small model for 31 languages, including Hindi, Japanese and Korean.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2",
+      "sha256": "82fa96f91c4ef8abaae3a14a3f4153facf88bed821d1f7331cec2700f432c427",
+      "bytes": 128774318,
+      "languages": [
+        "en",
+        "ko",
+        "ja",
+        "ar",
+        "bg",
+        "cs",
+        "da",
+        "de",
+        "el",
+        "es",
+        "et",
+        "fi",
+        "fr",
+        "hi",
+        "hr",
+        "hu",
+        "id",
+        "it",
+        "lt",
+        "lv",
+        "nl",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "sv",
+        "tr",
+        "uk",
+        "vi"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [
+        "en",
+        "hi",
+        "ja"
+      ],
+      "license": "MIT",
+      "recommended": true,
+      "speed": 4,
+      "clarity": 3,
+      "tested": true,
+      "badge": "Most languages",
+      "errorRate": {
+        "en": 0.0,
+        "hi": 0.144,
+        "ja": 0.024
+      }
+    },
+    {
+      "id": "kokoro-int8-multi-lang-v1_0",
+      "name": "Kokoro",
+      "maker": "hexgrad",
+      "kind": "kokoro",
+      "summary": "An 82M-parameter voice known for natural English; also Spanish, French, Hindi, Italian, Portuguese and Chinese. (Japanese is left out: it came back mostly wrong in our tests.)",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2",
+      "sha256": "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653",
+      "bytes": 132353410,
+      "languages": [
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "pt",
+        "zh"
+      ],
+      "speakers": {
+        "en": 3,
+        "en-gb": 21,
+        "es": 28,
+        "fr": 30,
+        "hi": 31,
+        "it": 35,
+        "ja": 37,
+        "pt": 42,
+        "zh": 45,
+        "default": 3
+      },
+      "benchLanguages": [
+        "en",
+        "hi"
+      ],
+      "license": "Apache 2.0",
+      "recommended": true,
+      "speed": 2,
+      "clarity": 3,
+      "tested": true,
+      "errorRate": {
+        "en": 0.013,
+        "hi": 0.159
+      }
+    },
+    {
+      "id": "vits-piper-hi_IN-rohan-medium-int8",
+      "name": "Piper · Hindi (Rohan)",
+      "maker": "Piper",
+      "kind": "vits",
+      "summary": "A tiny, fast Hindi voice.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-hi_IN-rohan-medium-int8.tar.bz2",
+      "sha256": "b306822fe16516d3c882e070a7205d781524bd9e8f2d121c3da3e504afe20e05",
+      "bytes": 21064499,
+      "languages": [
+        "hi"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [
+        "hi"
+      ],
+      "license": "IndicTTS (non-commercial)",
+      "recommended": false,
+      "speed": 4,
+      "clarity": 3,
+      "tested": true,
+      "errorRate": {
+        "hi": 0.065
+      }
+    },
+    {
+      "id": "vits-piper-en_US-amy-low-int8",
+      "name": "Piper · English (Amy)",
+      "maker": "Piper",
+      "kind": "vits",
+      "summary": "A tiny, fast English voice.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low-int8.tar.bz2",
+      "sha256": "93070ac9fadf512e56c46bdd0c5d2ce96b424fdc4e683d560167410bd2c4df7d",
+      "bytes": 21099246,
+      "languages": [
+        "en"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [
+        "en"
+      ],
+      "license": "Piper voice license",
+      "recommended": false,
+      "speed": 4,
+      "clarity": 5,
+      "tested": true,
+      "errorRate": {
+        "en": 0.013
+      }
+    },
+    {
+      "id": "kitten-nano-en-v0_8-int8",
+      "name": "Kitten Nano",
+      "maker": "KittenML",
+      "kind": "kitten",
+      "summary": "A very small English model with eight voices.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kitten-nano-en-v0_8-int8.tar.bz2",
+      "sha256": "6fa5be852612ce761094ba74ee6123b4fc4acfefa79bf64dc63acae4a83af2fd",
+      "bytes": 31220690,
+      "languages": [
+        "en"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [
+        "en"
+      ],
+      "license": "Apache 2.0",
+      "recommended": true,
+      "speed": 3,
+      "clarity": 5,
+      "tested": true,
+      "badge": "Small, clear English",
+      "errorRate": {
+        "en": 0.0
+      }
+    },
+    {
+      "id": "vits-piper-es_ES-davefx-medium-int8",
+      "name": "Piper · Spanish (Davefx)",
+      "maker": "Piper",
+      "kind": "vits",
+      "summary": "A tiny, fast Spanish voice.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-es_ES-davefx-medium-int8.tar.bz2",
+      "sha256": "8bb8ac1cefb727caec9bd9c6c3185c673c8b42c53bd29bb25d5a7715dac37125",
+      "bytes": 21171632,
+      "languages": [
+        "es"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [],
+      "license": "Piper voice license",
+      "recommended": false,
+      "speed": 0,
+      "clarity": 0,
+      "tested": false
+    },
+    {
+      "id": "vits-piper-de_DE-thorsten-medium-int8",
+      "name": "Piper · German (Thorsten)",
+      "maker": "Piper",
+      "kind": "vits",
+      "summary": "A tiny, fast German voice.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-de_DE-thorsten-medium-int8.tar.bz2",
+      "sha256": "07e240b7b9c1fc9211d5a69512f8cbe11b3286c2ed79c15c076ac6ed427fdf13",
+      "bytes": 20949833,
+      "languages": [
+        "de"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [],
+      "license": "Piper voice license",
+      "recommended": false,
+      "speed": 0,
+      "clarity": 0,
+      "tested": false
+    },
+    {
+      "id": "vits-piper-fr_FR-siwis-medium-int8",
+      "name": "Piper · French (Siwis)",
+      "maker": "Piper",
+      "kind": "vits",
+      "summary": "A tiny, fast French voice.",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-medium-int8.tar.bz2",
+      "sha256": "3909cff9b3cfd4820c66aa13bf554315c82e34899c161f0b446ece372bc4b5ec",
+      "bytes": 20914888,
+      "languages": [
+        "fr"
+      ],
+      "speakers": {
+        "default": 0
+      },
+      "benchLanguages": [],
+      "license": "Piper voice license",
+      "recommended": false,
+      "speed": 0,
+      "clarity": 0,
+      "tested": false
+    }
+  ],
+  "builtInRatings": {
+    "apple": {
+      "speed": 4,
+      "clarity": 2
+    },
+    "google": {
+      "speed": 5,
+      "clarity": 5
+    }
+  }
+}

@@ -147,6 +147,28 @@ enum Debug {
                     }
                     return
                 }
+                if name == "voicedownload", parts.count > 1, let m = VoiceCatalog.shared.models.first(where: { $0.id == parts[1] }) {
+                    VoiceStore.shared.download(m)
+                    let t0 = Date()
+                    Task {
+                        while true {
+                            try? await Task.sleep(for: .seconds(2))
+                            let st = VoiceStore.shared
+                            Debug.log(String(format: "voice %@ %.0f s progress=%@ installed=%@ error=%@", m.id, Date().timeIntervalSince(t0),
+                                             st.progress[m.id].map { String(format: "%.2f", $0) } ?? "-", String(st.installed.contains(m.id)), st.errors[m.id] ?? "-"))
+                            if st.progress[m.id] == nil { break }
+                        }
+                    }
+                    return
+                }
+                if name == "say", parts.count > 2 {
+                    // say|<language>|<text>: reads it with the chosen voice engine.
+                    let t0 = Date()
+                    Narrator.shared.read([Segment(text: parts[2], rect: nil, language: parts[1])]) { i in
+                        Debug.log(String(format: "say highlight %@ at %.0f ms", i.map(String.init) ?? "end", Date().timeIntervalSince(t0) * 1000))
+                    }
+                    return
+                }
                 if name == "dump" {
                     let blocks = Live.shared.debugView?.blocks ?? []
                     let log = blocks.map { "\($0.item.text.prefix(40)) -> \($0.translation.prefix(60))" }.joined(separator: "\n")

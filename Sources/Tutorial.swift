@@ -207,8 +207,3 @@ enum Tips {
         for k in [Kind.overlay, .reading, .card, .live] { UserDefaults.standard.removeObject(forKey: "tip." + k.rawValue) }
     }
 }
-
-/// Open-source narration models (sherpa-onnx). Filled in by NarrationModels.swift.
-enum NarrationModels {
-    static func engine() -> VoiceEngine? { nil }
-}

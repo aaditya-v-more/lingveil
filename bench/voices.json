@@ -1,0 +1,60 @@
+{
+  "apple": {
+    "en": {
+      "rtf": 0.124,
+      "cer": 0.0126
+    },
+    "hi": {
+      "rtf": 0.102,
+      "cer": 0.1884
+    }
+  },
+  "google": {
+    "en": {
+      "rtf": 0.019,
+      "cer": 0.0
+    }
+  },
+  "sherpa-onnx-supertonic-3-tts-int8-2026-05-11": {
+    "en": {
+      "rtf": 0.144,
+      "cer": 0.0
+    },
+    "hi": {
+      "rtf": 0.143,
+      "cer": 0.1438
+    },
+    "ja": {
+      "rtf": 0.144,
+      "cer": 0.0238
+    }
+  },
+  "kokoro-int8-multi-lang-v1_0": {
+    "en": {
+      "rtf": 0.583,
+      "cer": 0.0126
+    },
+    "hi": {
+      "rtf": 0.554,
+      "cer": 0.159
+    }
+  },
+  "vits-piper-hi_IN-rohan-medium-int8": {
+    "hi": {
+      "rtf": 0.14,
+      "cer": 0.0645
+    }
+  },
+  "vits-piper-en_US-amy-low-int8": {
+    "en": {
+      "rtf": 0.092,
+      "cer": 0.0126
+    }
+  },
+  "kitten-nano-en-v0_8-int8": {
+    "en": {
+      "rtf": 0.181,
+      "cer": 0.0
+    }
+  }
+}

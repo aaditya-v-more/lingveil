@@ -18,7 +18,7 @@ rm build/Lingveil-*
 
 sed -e "s/VERSION/$VERSION/g" Resources/Info.plist > "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
-cp shared/models.json shared/languages.json Resources/install-google-voices.sh "$APP/Contents/Resources/"
+cp shared/models.json shared/languages.json shared/voices.json Resources/install-google-voices.sh "$APP/Contents/Resources/"
 
 # llama.cpp's server runs the downloadable local models (Apple silicon only). Built once,
 # statically, with its Metal shaders embedded, from LLAMA_CPP_DIR (default ../llama.cpp).
@@ -32,7 +32,12 @@ fi
 mkdir -p "$APP/Contents/Helpers"
 cp .llama-build/bin/llama-server "$APP/Contents/Helpers/"
 
+# lingveil-tts speaks with the downloadable narration models. It loads the sherpa-onnx
+# runtime (downloaded on demand, signed by its makers, not by us), hence the entitlement.
+clang -O2 -arch arm64 -mmacosx-version-min=15.0 Sources/Helpers/tts.c -o "$APP/Contents/Helpers/lingveil-tts"
+
 ID="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Developer ID Application/ {print $2; exit}')}"
 codesign --force --options runtime --sign "${ID:--}" "$APP/Contents/Helpers/llama-server"
+codesign --force --options runtime --entitlements Resources/tts.entitlements --sign "${ID:--}" "$APP/Contents/Helpers/lingveil-tts"
 codesign --force --options runtime --sign "${ID:--}" "$APP"
 echo "Built $APP (signed: ${ID:-ad hoc})"
