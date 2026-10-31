@@ -169,6 +169,11 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
 - **Paragraph**: shrink to max(7, 0.7×) while taller than 1.06× the box; then grow downward
   only into free space (≤ 0.5× the box), shrink to max(7, 0.55×), truncate. Text starts at
   the original first line.
+- **One size per column**: single-line blocks anchored on the same edge with the same original
+  size are capped at the group's median fitted size (a single long item that had to shrink
+  further keeps its own size).
+- Drop a block that overlaps a better one by > 30% of the smaller (accessibility text first,
+  then the larger block).
 - Fade the overlay in over 120 ms, out over 100 ms. Never animate text that is being read.
 
 ### 2.10 Live mode
