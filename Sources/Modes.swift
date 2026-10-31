@@ -377,6 +377,8 @@ final class Bubble {
         tf.font = .systemFont(ofSize: 14)
         tf.isSelectable = true
         tf.preferredMaxLayoutWidth = 380
+        tf.maximumNumberOfLines = 14
+        tf.lineBreakMode = .byTruncatingTail
         let stack = NSStackView(views: [tf])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -388,26 +390,37 @@ final class Bubble {
             o.textColor = .secondaryLabelColor
             o.preferredMaxLayoutWidth = 380
             o.maximumNumberOfLines = 4
-            stack.addArrangedSubview(o)
-            let copy = NSButton(title: "Copy", target: self, action: #selector(copy(_:)))
-            copy.bezelStyle = .inline
-            copy.controlSize = .small
+            let copy = NSButton(image: NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy translation")!,
+                                target: self, action: #selector(copy(_:)))
+            copy.isBordered = false
+            copy.contentTintColor = .secondaryLabelColor
+            copy.toolTip = "Copy translation"
             copy.identifier = NSUserInterfaceItemIdentifier(translation)
-            stack.addArrangedSubview(copy)
+            let row = NSStackView(views: [o, NSView(), copy])
+            row.alignment = .lastBaseline
+            row.setHuggingPriority(.defaultLow, for: .horizontal)
+            stack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24).isActive = true
         }
         let fx = NSVisualEffectView()
         fx.material = .popover
         fx.state = .active
-        fx.wantsLayer = true
-        fx.layer?.cornerRadius = 10
+        // A mask (not a layer radius) gives the blur, the corners and the window shadow
+        // the same rounded shape.
+        fx.maskImage = NSImage(size: CGSize(width: 21, height: 21), flipped: false) { r in
+            NSColor.black.setFill(); NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10).fill(); return true
+        }
+        fx.maskImage?.capInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        fx.maskImage?.resizingMode = .stretch
         fx.addSubview(stack)
         stack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: fx.leadingAnchor), stack.trailingAnchor.constraint(equalTo: fx.trailingAnchor),
                                      stack.topAnchor.constraint(equalTo: fx.topAnchor), stack.bottomAnchor.constraint(equalTo: fx.bottomAnchor)])
         let size = stack.fittingSize
         let screen = NSScreen.underMouse.visibleFrame
-        var origin = CGPoint(x: p.x, y: p.y - size.height - 8)
+        var origin = CGPoint(x: p.x + 4, y: p.y - size.height - 12)
         if origin.y < screen.minY { origin.y = p.y + 24 }
+        origin.y = min(origin.y, screen.maxY - size.height - 4)
         origin.x = min(max(screen.minX + 4, origin.x), screen.maxX - size.width - 4)
         let w = NSPanel(contentRect: CGRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         w.isOpaque = false

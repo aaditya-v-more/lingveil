@@ -6,6 +6,7 @@ import Translation
 struct ModelsView: View {
     @ObservedObject var m: SettingsModel
     @ObservedObject private var store = ModelStore.shared
+    @State private var confirmDelete: LocalModel?
 
     private var target: Language { Language.named(m.target) }
 
@@ -47,6 +48,9 @@ struct ModelsView: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Delete \(confirmDelete?.name ?? "")?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
+            Button("Delete \(confirmDelete?.sizeText ?? "")", role: .destructive) { if let m = confirmDelete { store.delete(m) }; confirmDelete = nil }
+        } message: { Text("You can download it again later.") }
     }
 
     private var engineNote: String {
@@ -105,13 +109,13 @@ struct ModelsView: View {
         } else if installed {
             HStack(spacing: 8) {
                 if !selected {
-                    Button("Use") { m.localModel = model.id; if m.engine != .auto { m.engine = .local } }
+                    Button { m.localModel = model.id; if m.engine != .auto { m.engine = .local } } label: { Text("Use").frame(minWidth: 70) }
                 }
-                Button(role: .destructive) { store.delete(model) } label: { Image(systemName: "trash") }
+                Button(role: .destructive) { confirmDelete = model } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless).help("Delete \(model.name) (\(model.sizeText))")
             }
         } else {
-            Button("Download") { store.download(model); if !store.installed.contains(m.localModel) { m.localModel = model.id } }
+            Button { store.download(model); if !store.installed.contains(m.localModel) { m.localModel = model.id } } label: { Text("Download").frame(minWidth: 70) }
                 .disabled(model.ramGB > max(LocalModel.macRAMGB, 8) * 2)
         }
     }
@@ -149,13 +153,16 @@ struct Rating: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(label).font(.caption).foregroundStyle(.secondary)
-            if value == 0 { Text("not rated yet").font(.caption).foregroundStyle(.tertiary) } else {
-            HStack(spacing: 2) {
-                ForEach(1...5, id: \.self) { i in
-                    Capsule().fill(i <= value ? Color.accentColor : Color.secondary.opacity(0.25)).frame(width: 9, height: 5)
+            Group {
+                if value == 0 { Text("not rated").font(.caption).foregroundStyle(.tertiary) } else {
+                    HStack(spacing: 2) {
+                        ForEach(1...5, id: \.self) { i in
+                            Capsule().fill(i <= value ? Color.accentColor : Color.primary.opacity(0.18)).frame(width: 9, height: 5)
+                        }
+                    }
                 }
             }
-            }
+            .frame(width: 56, alignment: .leading)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(value == 0 ? "\(label) not rated yet" : "\(label) \(value) out of 5")
@@ -167,6 +174,6 @@ struct Tag: View {
     let color: Color
     var body: some View {
         Text(text).font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1)
-            .background(color.opacity(0.15), in: Capsule()).foregroundStyle(color)
+            .background(color.opacity(0.22), in: Capsule()).foregroundStyle(color)
     }
 }

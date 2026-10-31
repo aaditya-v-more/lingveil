@@ -53,7 +53,7 @@ final class OverlayView: NSView {
     private var typicalStroke: CGFloat = 0
     var debugSizes: [(String, CGFloat?, CGFloat, NSTextAlignment)] { blocks.indices.map { (blocks[$0].item.text, blocks[$0].item.size, laid[$0].size, aligns[$0]) } }
     private var dropped = Set<Int>()   // blocks dropped because they overlap a better one
-    var status: String? { didSet { needsDisplay = true } }
+    var status: String? { didSet { updateStatus() } }
     var onClick: (() -> Void)?
     var onScroll: (() -> Void)?
     var showBorder = false { didSet { needsDisplay = true } }
@@ -155,9 +155,12 @@ final class OverlayView: NSView {
             let base = (it.font?.pointSize ?? it.size ?? 0).rounded()
             groups["\(al.rawValue)|\(Int((anchor / 3).rounded()))|\(base)", default: []].append(i)
         }
+        // The column's typical size (median) caps the larger ones; a single long item that
+        // had to shrink further keeps its own size instead of shrinking the whole column.
         for members in groups.values where members.count > 1 {
-            let smallest = members.map { laid[$0].size }.min()!
-            for i in members where laid[i].size > smallest + 0.25 { laid[i] = layout(i, cap: smallest) }
+            let sizes = members.map { laid[$0].size }.sorted()
+            let typical = sizes[sizes.count / 2]
+            for i in members where laid[i].size > typical + 0.25 { laid[i] = layout(i, cap: typical) }
         }
     }
 
@@ -189,7 +192,7 @@ final class OverlayView: NSView {
         // Weight relative to the screen's typical stroke: absolute stroke width varies too
         // much with size and anti-aliasing to tell regular from bold on its own.
         let ratio = typicalStroke > 0 ? a.stroke / typicalStroke : 1
-        let weight: NSFont.Weight = it.font != nil ? .regular : ratio >= 1.5 ? .bold : ratio >= 1.3 ? .semibold : .regular
+        let weight: NSFont.Weight = it.font != nil ? .regular : ratio >= 1.75 ? .bold : ratio >= 1.45 ? .semibold : .regular
         let base: NSFont = it.font ?? .systemFont(ofSize: it.size ?? max(8, lh * 0.8), weight: weight)
         let others = baseRects.indices.filter { $0 != i && !dropped.contains($0) }.map { baseRects[$0] }
         let single = it.lines == 1
@@ -277,26 +280,62 @@ final class OverlayView: NSView {
             b.lineWidth = 2; b.stroke()
         }
         if let h = hovered, showOriginal, h < laid.count { drawTooltip(blocks[h].item.text, under: laid[h].fill) }
-        if let s = status { drawPill(s) }
     }
 
+    /// A system-style tooltip with the original text, kept inside the view.
     private func drawTooltip(_ text: String, under r: CGRect) {
-        let s = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.white])
+        let s = NSAttributedString(string: text, attributes: [.font: NSFont.toolTipsFont(ofSize: 0), .foregroundColor: NSColor.labelColor])
         let size = s.boundingRect(with: CGSize(width: 380, height: 400), options: [.usesLineFragmentOrigin]).size
-        var box = CGRect(x: r.minX, y: r.minY - size.height - 12, width: size.width + 12, height: size.height + 8)
-        if box.minY < 0 { box.origin.y = r.maxY + 4 }
+        var box = CGRect(x: r.minX, y: r.minY - size.height - 10, width: ceil(size.width) + 12, height: ceil(size.height) + 8)
+        if box.minY < 2 { box.origin.y = r.maxY + 4 }
+        box.origin.y = min(box.minY, bounds.maxY - box.height - 2)
         box.origin.x = min(max(2, box.minX), bounds.width - box.width - 2)
-        NSColor.black.withAlphaComponent(0.82).setFill()
-        NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5).fill()
+        let path = NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4)
+        NSGraphicsContext.current?.cgContext.saveGState()
+        NSGraphicsContext.current?.cgContext.setShadow(offset: CGSize(width: 0, height: -1), blur: 4, color: NSColor.black.withAlphaComponent(0.2).cgColor)
+        NSColor.windowBackgroundColor.setFill(); path.fill()
+        NSGraphicsContext.current?.cgContext.restoreGState()
+        NSColor.separatorColor.setStroke(); path.lineWidth = 0.5; path.stroke()
         s.draw(with: box.insetBy(dx: 6, dy: 4), options: [.usesLineFragmentOrigin])
     }
 
-    private func drawPill(_ text: String) {
-        let s = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white])
-        let size = s.size()
-        let box = CGRect(x: bounds.midX - size.width / 2 - 12, y: bounds.maxY - size.height - 44, width: size.width + 24, height: size.height + 10)
-        NSColor.black.withAlphaComponent(0.72).setFill()
-        NSBezierPath(roundedRect: box, xRadius: box.height / 2, yRadius: box.height / 2).fill()
-        s.draw(at: CGPoint(x: box.minX + 12, y: box.minY + 5))
+    // MARK: status
+
+    private var hud: NSVisualEffectView?
+
+    /// Progress and messages ("Translating…", errors) in a small HUD at the top of the
+    /// overlay, wrapped and kept on screen.
+    private func updateStatus() {
+        hud?.removeFromSuperview(); hud = nil
+        guard let text = status else { return }
+        let fx = NSVisualEffectView()
+        fx.material = .hudWindow
+        fx.blendingMode = .withinWindow
+        fx.state = .active
+        fx.wantsLayer = true
+        fx.layer?.cornerRadius = 10
+        fx.layer?.masksToBounds = true
+        let label = NSTextField(wrappingLabelWithString: text)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .white
+        label.preferredMaxLayoutWidth = min(420, bounds.width - 60)
+        label.maximumNumberOfLines = 4
+        let stack = NSStackView(views: [label])
+        if text.hasSuffix("…") {
+            let spin = NSProgressIndicator()
+            spin.style = .spinning; spin.controlSize = .small; spin.startAnimation(nil)
+            stack.insertArrangedSubview(spin, at: 0)
+        }
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 7, left: 12, bottom: 7, right: 14)
+        fx.addSubview(stack)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: fx.leadingAnchor), stack.trailingAnchor.constraint(equalTo: fx.trailingAnchor),
+                                     stack.topAnchor.constraint(equalTo: fx.topAnchor), stack.bottomAnchor.constraint(equalTo: fx.bottomAnchor)])
+        let size = stack.fittingSize
+        let top = min(bounds.maxY - 8, bounds.maxY - (bounds.height > 300 ? 44 : 8))
+        fx.frame = CGRect(x: (bounds.midX - size.width / 2).rounded(), y: max(4, top - size.height), width: size.width, height: size.height)
+        addSubview(fx)
+        hud = fx
     }
 }

@@ -74,7 +74,7 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   inside; proves it is visible), and drop duplicates (same text, > 50% overlap). Its line
   count is the sum of those OCR items' lines. When it has no font (web and Electron apps
   give none), or its font size is outside 0.6–1.6× the OCR size, take the size (median of
-  the OCR items) from OCR, and grow its box to include those OCR items.
+  the OCR items) and the box (union of the OCR items) from OCR; letters OCR missed at either end are added from the pixels (2.9).
 - Add OCR items that don't overlap any kept accessibility item by more than 25% of their area.
 - OCR font size: by height = h × 0.8 (single line) or h × 0.74 (multi-line); for single lines
   prefer the size at which the text measured in the system font matches the box width,
@@ -150,6 +150,9 @@ capture → text items (accessibility ∥ OCR) → filter → translate (batched
   box, not past the screen edge); then shrink to max(7, 0.7×); if still too tall, grow
   downward only into free space and at most 0.5× the box, then shrink to max(7, 0.55×)
   and truncate. Center the text vertically.
+- One size per column: single-line blocks anchored on the same edge with the same original
+  size are capped at the group's median fitted size (larger ones come down to it; one long
+  item that had to shrink further keeps its own size).
 - Fade the overlay in over 120 ms, out over 100 ms. Never animate text that is being read.
 
 ### 2.10 Live mode

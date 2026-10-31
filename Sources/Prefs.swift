@@ -70,13 +70,13 @@ enum EngineKind: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .auto: "Automatic (Google online, local model offline)"
+        case .auto: "Automatic"
         case .google: "Google Translate"
-        case .local: "Local model (private, offline)"
-        case .apple: "Apple Translation (offline)"
-        case .googleCloud: "Google Cloud (your API key)"
-        case .deepl: "DeepL (your API key)"
-        case .ollama: "Ollama or another local server"
+        case .local: "Local Model"
+        case .apple: "Apple Translation"
+        case .googleCloud: "Google Cloud"
+        case .deepl: "DeepL"
+        case .ollama: "Ollama"
         }
     }
 }
@@ -91,7 +91,7 @@ enum Action: String, CaseIterable {
     case screen, area, live, cursor, selection
     var title: String {
         switch self {
-        case .screen: "Translate Window"
+        case .screen: "Translate Screen"
         case .area: "Translate Area…"
         case .live: "Live Translate Area…"
         case .cursor: "Translate Under Pointer"

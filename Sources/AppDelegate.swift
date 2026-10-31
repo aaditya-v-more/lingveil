@@ -90,10 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if !Capture.hasPermission || (Prefs.useAccessibility && !AXText.trusted) {
             m.addItem(.separator())
-            let p = NSMenuItem(title: "⚠︎ Finish Setting Up Permissions…", action: #selector(openPermissions), keyEquivalent: "")
+            let p = NSMenuItem(title: "Finish Setting Up Permissions…", action: #selector(openPermissions), keyEquivalent: "")
+            p.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
             m.addItem(p)
         }
         m.addItem(.separator())
+        m.addItem(withTitle: "About Lingveil", action: #selector(about), keyEquivalent: "")
         m.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         m.addItem(withTitle: "Quit Lingveil", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for i in m.items where i.action != #selector(NSApplication.terminate(_:)) { i.target = self }
@@ -108,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func pickTarget(_ i: NSMenuItem) { Prefs.target = i.representedObject as? String ?? Prefs.target }
     @objc private func pickEngine(_ i: NSMenuItem) { Prefs.engine = EngineKind(rawValue: i.representedObject as? String ?? "") ?? .auto }
     @objc private func openSettings() { SettingsWindow.show() }
+    @objc private func about() { NSApp.activate(ignoringOtherApps: true); NSApp.orderFrontStandardAboutPanel(nil) }
     @objc private func openPermissions() { SettingsWindow.show(tab: .permissions) }
 }
 

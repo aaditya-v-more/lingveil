@@ -35,8 +35,9 @@ enum Pipeline {
             if let f = a.font, let o = ocrSize, f.pointSize > o * 1.6 || f.pointSize < o * 0.6 { a.font = nil }
             if a.font == nil {
                 a.size = ocrSize
-                // The element's own box covers all of its text; OCR pieces can stick out a little.
-                a.rect = inside.reduce(a.rect) { $0.union($1.rect) }
+                // The OCR lines give a tight box (an element's frame is often a whole row);
+                // letters OCR missed at either end are added later from the pixels.
+                a.rect = inside.dropFirst().reduce(inside[0].rect) { $0.union($1.rect) }
                 if inside.count == 1 { a.align = inside[0].align }
             }
             axValid.append(a)

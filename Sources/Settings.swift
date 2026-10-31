@@ -5,20 +5,42 @@ import Carbon.HIToolbox
 enum SettingsWindow {
     enum Tab: String { case general, shortcuts, models, engines, permissions }
     private static var window: NSWindow?
+    private static var tabs: NSTabViewController?
     private static let model = SettingsModel()
+    static let order: [(Tab, String, String, CGSize)] = [
+        (.general, "General", "gearshape", CGSize(width: 560, height: 330)),
+        (.shortcuts, "Shortcuts", "command", CGSize(width: 520, height: 320)),
+        (.models, "Models", "cpu", CGSize(width: 660, height: 660)),
+        (.engines, "Online", "globe", CGSize(width: 520, height: 300)),
+        (.permissions, "Permissions", "lock.shield", CGSize(width: 540, height: 250)),
+    ]
 
+    /// A standard macOS settings window: toolbar tabs, each sized to its content, and the
+    /// window titled after the selected tab.
     static func show(tab: Tab = .general) {
-        model.tab = tab
         model.refresh()
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
-                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "Lingveil"
+            let vc = NSTabViewController()
+            vc.tabStyle = .toolbar
+            vc.transitionOptions = [.crossfade, .allowUserInteraction]
+            for (t, title, icon, size) in order {
+                let host = NSHostingController(rootView: SettingsView(m: model, only: t).frame(width: size.width, height: size.height))
+                host.preferredContentSize = size
+                let item = NSTabViewItem(viewController: host)
+                item.label = title
+                item.image = NSImage(systemSymbolName: icon, accessibilityDescription: title)
+                vc.addTabViewItem(item)
+            }
+            let w = NSWindow(contentViewController: vc)
+            w.styleMask = [.titled, .closable]
+            w.toolbarStyle = .preference
             w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: SettingsView(m: model))
             w.center()
             window = w
+            tabs = vc
         }
+        if let i = order.firstIndex(where: { $0.0 == tab }) { tabs?.selectedTabViewItemIndex = i }
+        model.tab = tab
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
@@ -55,19 +77,17 @@ final class SettingsModel: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject var m: SettingsModel
+    let only: SettingsWindow.Tab
     private let poll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        TabView(selection: $m.tab) {
-            general.tabItem { Label("General", systemImage: "gearshape") }.tag(SettingsWindow.Tab.general)
-            shortcuts.tabItem { Label("Shortcuts", systemImage: "command") }.tag(SettingsWindow.Tab.shortcuts)
-            ModelsView(m: m).tabItem { Label("Models", systemImage: "cpu") }.tag(SettingsWindow.Tab.models)
-            engines.tabItem { Label("Online", systemImage: "globe") }.tag(SettingsWindow.Tab.engines)
-            permissions.tabItem { Label("Permissions", systemImage: "lock.shield") }.tag(SettingsWindow.Tab.permissions)
+        switch only {
+        case .general: general
+        case .shortcuts: shortcuts
+        case .models: ModelsView(m: m)
+        case .engines: engines
+        case .permissions: permissions.onReceive(poll) { _ in m.refresh() }
         }
-        .padding(16)
-        .frame(width: 640, height: 600)
-        .onReceive(poll) { _ in if m.tab == .permissions { m.refresh() } }
     }
 
     private var general: some View {

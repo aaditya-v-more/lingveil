@@ -13,9 +13,12 @@ enum Debug {
             // Renders a settings tab offscreen to a PNG (tab from LINGVEIL_DEBUG_TAB, default models).
             let model = SettingsModel()
             let tab = env["LINGVEIL_DEBUG_TAB"] ?? "models"
-            let view: AnyView = tab == "models" ? AnyView(ModelsView(m: model)) : AnyView(SettingsView(m: model))
-            let host = NSHostingView(rootView: view.frame(width: 640, height: Double(env["LINGVEIL_DEBUG_HEIGHT"] ?? "1400") ?? 1400))
-            host.frame = CGRect(x: 0, y: 0, width: 640, height: Double(env["LINGVEIL_DEBUG_HEIGHT"] ?? "1400") ?? 1400)
+            let t = SettingsWindow.Tab(rawValue: tab) ?? .models
+            let size = SettingsWindow.order.first { $0.0 == t }?.3 ?? CGSize(width: 640, height: 600)
+            let view = AnyView(SettingsView(m: model, only: t).frame(width: size.width, height: env["LINGVEIL_DEBUG_HEIGHT"] == nil ? size.height : nil))
+            let height = Double(env["LINGVEIL_DEBUG_HEIGHT"] ?? "") ?? size.height
+            let host = NSHostingView(rootView: view.frame(width: size.width, height: height))
+            host.frame = CGRect(x: 0, y: 0, width: size.width, height: height)
             let w = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
             w.contentView = host
             w.appearance = NSAppearance(named: env["LINGVEIL_DEBUG_DARK"] == nil ? .aqua : .darkAqua)
