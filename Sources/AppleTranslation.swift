@@ -1,24 +1,53 @@
 import SwiftUI
 import Translation
+import NaturalLanguage
 
 /// Apple's on-device translation (the same models as the Translate app). Runs out of
 /// process, works offline once a language pair is downloaded, and costs nothing.
 struct AppleOnDevice: Translator {
+    /// Lines are grouped by their own language, since one screen often mixes several
+    /// (an English app showing Japanese and Spanish messages). Short lines that can't be
+    /// identified go with the screen's main language.
     func translate(_ texts: [String], to target: Language) async throws -> [String] {
         let tgt = Locale.Language(identifier: target.appleID)
-        guard let srcID = Detect.dominant(texts, excluding: target) else { return texts }
-        let src = Locale.Language(identifier: srcID)
-        let status = await LanguageAvailability().status(from: src, to: tgt)
-        switch status {
+        guard let main = Detect.dominant(texts, excluding: target) else { return texts }
+        var groups: [String: [Int]] = [:]
+        for (i, t) in texts.enumerated() {
+            let r = NLLanguageRecognizer()
+            r.processString(t)
+            let best = r.languageHypotheses(withMaximum: 1).first
+            let lang = (best.map { $0.value > 0.6 && t.count >= 3 } ?? false) ? best!.key.rawValue : main
+            if lang == target.appleID { continue }
+            groups[lang, default: []].append(i)
+        }
+        var out = texts
+        var lastError: Error?
+        for (lang, idx) in groups.sorted(by: { $0.value.count > $1.value.count }) {
+            do {
+                let done = try await translate(idx.map { texts[$0] }, from: Locale.Language(identifier: lang), to: tgt, target)
+                for (i, t) in zip(idx, done) { out[i] = t }
+            } catch { lastError = error }
+        }
+        if out == texts, let lastError { throw lastError }
+        return out
+    }
+
+    private func translate(_ texts: [String], from src: Locale.Language, to tgt: Locale.Language, _ target: Language) async throws -> [String] {
+        var fast = false
+        if #available(macOS 26.4, *), Prefs.appleFast,
+           await LanguageAvailability(preferredStrategy: .lowLatency).status(from: src, to: tgt) == .installed { fast = true }
+        switch await LanguageAvailability().status(from: src, to: tgt) {
         case .unsupported:
             throw LingveilError.message("On-device translation does not support \(Self.name(src)) → \(target.name)")
         case .supported:
-            throw LingveilError.message("Download \(Self.name(src)) → \(target.name) in Settings → Engines to translate offline")
+            throw LingveilError.message("Download \(Self.name(src)) → \(target.name) in Settings → Models to translate offline")
         default: break
         }
+        if #available(macOS 26.4, *), fast {
+            return try await Self.run(TranslationSession(installedSource: src, target: tgt, preferredStrategy: .lowLatency), texts)
+        }
         if #available(macOS 26.0, *) {
-            let session = TranslationSession(installedSource: src, target: tgt)
-            return try await Self.run(session, texts)
+            return try await Self.run(TranslationSession(installedSource: src, target: tgt), texts)
         }
         return try await AppleBridge.shared.translate(texts, from: src, to: tgt)
     }
@@ -105,13 +134,18 @@ final class AppleBridge: ObservableObject {
 struct LanguageDownloadButton: View {
     let source: String
     let target: String
+    var fast = false
     @State private var config: TranslationSession.Configuration?
     @State private var status = ""
 
     var body: some View {
         HStack {
             Button("Download for offline use") {
-                config = .init(source: .init(identifier: source), target: .init(identifier: target))
+                if #available(macOS 26.4, *), fast {
+                    config = .init(source: .init(identifier: source), target: .init(identifier: target), preferredStrategy: .lowLatency)
+                } else {
+                    config = .init(source: .init(identifier: source), target: .init(identifier: target))
+                }
                 config?.invalidate()
             }
             Text(status).foregroundStyle(.secondary).font(.callout)
@@ -120,11 +154,13 @@ struct LanguageDownloadButton: View {
             do { try await session.prepareTranslation(); status = "Ready offline" }
             catch { status = error.localizedDescription }
         }
-        .task(id: source + target) { await refresh() }
+        .task(id: source + target + String(fast)) { await refresh() }
     }
 
     private func refresh() async {
-        let s = await LanguageAvailability().status(from: .init(identifier: source), to: .init(identifier: target))
+        var availability = LanguageAvailability()
+        if #available(macOS 26.4, *), fast { availability = LanguageAvailability(preferredStrategy: .lowLatency) }
+        let s = await availability.status(from: .init(identifier: source), to: .init(identifier: target))
         status = switch s {
         case .installed: "Ready offline"
         case .supported: "Not downloaded"

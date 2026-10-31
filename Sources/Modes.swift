@@ -143,6 +143,10 @@ enum RegionPicker {
     }
 
     static func pick() async -> (NSScreen, CGRect)? {
+        if let r = Debug.rect {
+            Debug.rect = nil
+            return (NSScreen.screens.first { $0.frame.intersects(r) } ?? .underMouse, r)
+        }
         let screen = NSScreen.underMouse
         let w = PickerWindow(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         w.isOpaque = false
@@ -182,6 +186,7 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
     private let queue = DispatchQueue(label: "lingveil.live", qos: .userInitiated)
 
     var isRunning: Bool { stream != nil }
+    var debugView: OverlayView? { window?.view }
 
     func toggle() {
         if isRunning { stop(); return }
@@ -194,6 +199,11 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func start(screen: NSScreen, rect: CGRect) async {
         self.screen = screen; area = rect
+        // The overlay goes up first so the capture filter can exclude it.
+        let w = OverlayWindow(frame: rect, interactive: false)
+        w.view.showBorder = true
+        w.show()
+        window = w
         do {
             let (filter, _) = try await Capture.filter(for: screen)
             let cfg = SCStreamConfiguration()
@@ -207,14 +217,12 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
             let s = SCStream(filter: filter, configuration: cfg, delegate: self)
             try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
             try await s.startCapture()
+            Debug.log("live started \(rect)")
             stream = s
         } catch {
+            window?.orderOut(nil); window = nil
             Alerts.show("Live translation could not start", error.localizedDescription); return
         }
-        let w = OverlayWindow(frame: rect, interactive: false)
-        w.view.showBorder = true
-        w.show()
-        window = w
         stopKey = HotKeys.shared.register(Shortcut(key: UInt32(kVK_Escape), mods: UInt32(optionKey))) { [weak self] in self?.stop() }
         StatusIcon.live(true)
     }
@@ -225,6 +233,7 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
         Task { try? await s?.stopCapture() }
         window?.fadeOut { Memory.relieve() }; window = nil
         pending = nil
+        lastPrint = []
         StatusIcon.live(false)
     }
 
@@ -236,9 +245,38 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
         CVPixelBufferLockBaseAddress(pb, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
         let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb), row = CVPixelBufferGetBytesPerRow(pb)
-        guard let src = CVPixelBufferGetBaseAddress(pb), let px = PixelBuffer(width: w, height: h) else { return }
+        guard let src = CVPixelBufferGetBaseAddress(pb) else { return }
+        // ScreenCaptureKit can mark unchanged frames complete, so compare a coarse
+        // brightness fingerprint and only copy and translate when the picture changed.
+        let print = Self.fingerprint(src, w, h, row)
+        guard Self.differs(print, lastPrint) else { return }
+        lastPrint = print
+        guard let px = PixelBuffer(width: w, height: h) else { return }
         for y in 0..<h { memcpy(px.base + y * px.bytesPerRow, src + y * row, w * 4) }
         Task { @MainActor in self.frameChanged(px) }
+    }
+
+    private nonisolated(unsafe) var lastPrint: [UInt8] = []
+
+    nonisolated static func fingerprint(_ base: UnsafeMutableRawPointer, _ w: Int, _ h: Int, _ row: Int) -> [UInt8] {
+        let n = 64
+        var out = [UInt8](repeating: 0, count: n * n)
+        let p = base.assumingMemoryBound(to: UInt8.self)
+        for gy in 0..<n {
+            let y = min(h - 1, gy * h / n + h / (2 * n))
+            for gx in 0..<n {
+                let o = y * row + min(w - 1, gx * w / n + w / (2 * n)) * 4
+                out[gy * n + gx] = UInt8((Int(p[o]) + 2 * Int(p[o + 1]) + Int(p[o + 2])) / 4)
+            }
+        }
+        return out
+    }
+
+    nonisolated static func differs(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+        guard a.count == b.count else { return true }
+        var changed = 0
+        for i in a.indices where abs(Int(a[i]) - Int(b[i])) > 12 { changed += 1 }
+        return changed > 2
     }
 
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -257,9 +295,12 @@ final class Live: NSObject, SCStreamOutput, SCStreamDelegate {
                 pending = nil
                 let snap = Snapshot(pixels: px, frame: area, scale: screen.backingScaleFactor)
                 let items = await Pipeline.items(in: snap, app: Pipeline.frontApp)
-                if let blocks = try? await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target)), isRunning {
-                    window?.view.blocks = blocks
-                }
+                Debug.log("live items \(items.count)")
+                do {
+                    let blocks = try await Pipeline.blocks(for: items, in: snap, to: Language.named(Prefs.target))
+                    Debug.log("live blocks \(blocks.count)")
+                    if isRunning { window?.view.blocks = blocks }
+                } catch { Debug.log("live error \(error.localizedDescription)") }
             }
             working = false
         }
@@ -276,9 +317,11 @@ final class Bubble {
     private var monitor: Any?
     private var escKey: UInt32?
     private var lastText = ""
+    private(set) var debugText: String?
 
     func underPointer(quiet: Bool = false) {
-        let p = NSEvent.mouseLocation
+        let p = Debug.point ?? NSEvent.mouseLocation
+        Debug.point = nil
         Task {
             var found: (String, CGRect?)?
             if Prefs.useAccessibility, AXText.trusted, let el = AXText.element(at: p) { found = AXText.text(of: el) }
@@ -322,6 +365,7 @@ final class Bubble {
 
     func show(_ translation: String, _ original: String?, near p: CGPoint) {
         close()
+        debugText = (original.map { $0 + " => " } ?? "") + translation
         let tf = NSTextField(wrappingLabelWithString: translation)
         tf.font = .systemFont(ofSize: 14)
         tf.isSelectable = true
@@ -380,6 +424,7 @@ final class Bubble {
     }
 
     func close() {
+        debugText = nil
         if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
         if let k = escKey { HotKeys.shared.unregister(k); escKey = nil }
         if panel != nil { panel?.orderOut(nil); panel = nil; Memory.relieve() }

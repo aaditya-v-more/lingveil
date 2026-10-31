@@ -40,13 +40,24 @@ enum Translation {
         switch Prefs.engine {
         case .auto:
             do { return try await GoogleWeb().translate(texts, to: target) }
-            catch { return try await AppleOnDevice().translate(texts, to: target) }
+            catch { return try await offline(texts, to: target) }
         case .google: return try await GoogleWeb().translate(texts, to: target)
+        case .local: return try await offline(texts, to: target)
         case .apple: return try await AppleOnDevice().translate(texts, to: target)
         case .googleCloud: return try await GoogleCloud(key: Prefs.googleCloudKey).translate(texts, to: target)
         case .deepl: return try await DeepL(key: Prefs.deeplKey).translate(texts, to: target)
         case .ollama: return try await Ollama(base: Prefs.ollamaURL, model: Prefs.ollamaModel).translate(texts, to: target)
         }
+    }
+
+    /// The chosen local model when it is downloaded and can do this language, otherwise
+    /// Apple's on-device translation.
+    private static func offline(_ texts: [String], to target: Language) async throws -> [String] {
+        if let m = LocalModel.named(Prefs.localModel), m.supports(target), LlamaServer.binary != nil,
+           await MainActor.run(body: { ModelStore.shared.isInstalled(m) }) {
+            return try await LocalTranslator(model: m).translate(texts, to: target)
+        }
+        return try await AppleOnDevice().translate(texts, to: target)
     }
 
     /// Splits work into request-sized chunks and runs them concurrently, keeping order.
@@ -231,6 +242,10 @@ enum Detect {
         let id = best.rawValue
         let words = text.split(separator: " ").count
         return p > (words >= 3 ? 0.6 : 0.8) && (id == lang.appleID || id.hasPrefix(lang.appleID + "-") || lang.appleID.hasPrefix(id))
+    }
+
+    static func language(of text: String) -> String? {
+        NLLanguageRecognizer.dominantLanguage(for: text)?.rawValue
     }
 
     static func dominant(_ texts: [String], excluding target: Language) -> String? {

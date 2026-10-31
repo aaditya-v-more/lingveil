@@ -15,6 +15,17 @@ struct TextItem {
     var lineHeight: CGFloat { rect.height / CGFloat(max(1, lines)) }
     var isCJK: Bool { text.unicodeScalars.contains { (0x3040...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) } }
     var hasLetters: Bool { text.unicodeScalars.contains { CharacterSet.letters.contains($0) } }
+
+    /// File names, URLs, paths, emails, handles and code-ish tokens read the same in every
+    /// language; translating them only mangles them.
+    var isLiteral: Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if t.contains("://") || t.hasPrefix("www.") || t.hasPrefix("/") || t.hasPrefix("~/") || t.hasPrefix("@") || t.hasPrefix("#") { return true }
+        guard !t.contains(" ") else { return false }
+        if t.contains("@"), t.contains(".") { return true }
+        return t.range(of: #"^[^\s.][^\s]*\.[a-z][a-z0-9]{0,4}$"#, options: .regularExpression) != nil
+            || t.range(of: #"[_/\\]|[a-z][A-Z]|\(\)"#, options: .regularExpression) != nil
+    }
 }
 
 // MARK: - OCR

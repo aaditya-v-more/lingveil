@@ -74,8 +74,8 @@ enum Capture {
     private static var cached: (SCShareableContent, Date)?
 
     /// Shareable content is slow to query (~50-100 ms), so it is reused for a few seconds.
-    static func content() async throws -> SCShareableContent {
-        if let (c, t) = cached, Date().timeIntervalSince(t) < 5 { return c }
+    static func content(fresh: Bool = false) async throws -> SCShareableContent {
+        if !fresh, let (c, t) = cached, Date().timeIntervalSince(t) < 5 { return c }
         let c = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         cached = (c, Date())
         return c
@@ -87,10 +87,14 @@ enum Capture {
     }
 
     /// Everything on `screen` except this app's own windows (overlays, bubbles, settings).
+    /// Our app only appears in the shareable list while it has a window on screen; when it
+    /// is missing from a cached list, the list is fetched again so it can be excluded.
     static func filter(for screen: NSScreen) async throws -> (SCContentFilter, SCDisplay) {
-        let c = try await content()
+        let pid = ProcessInfo.processInfo.processIdentifier
+        var c = try await content()
+        if !c.applications.contains(where: { $0.processID == pid }) { c = try await content(fresh: true) }
         guard let d = display(for: screen, in: c) else { throw LingveilError.message("Display not found") }
-        let me = c.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+        let me = c.applications.filter { $0.processID == pid }
         return (SCContentFilter(display: d, excludingApplications: me, exceptingWindows: []), d)
     }
 

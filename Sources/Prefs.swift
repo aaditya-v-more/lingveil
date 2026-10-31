@@ -38,6 +38,15 @@ enum Prefs {
         get { d.string(forKey: "deeplKey") ?? "" }
         set { d.set(newValue, forKey: "deeplKey") }
     }
+    static var localModel: String {
+        get { ProcessInfo.processInfo.environment["LINGVEIL_LOCAL_MODEL"] ?? d.string(forKey: "localModel") ?? "hy-mt2-1.8b" }
+        set { d.set(newValue, forKey: "localModel") }
+    }
+    /// Apple's smaller on-device models (macOS 26.4+): much faster, a little less polished.
+    static var appleFast: Bool {
+        get { d.object(forKey: "appleFast") as? Bool ?? true }
+        set { d.set(newValue, forKey: "appleFast") }
+    }
     static var ollamaURL: String {
         get { d.string(forKey: "ollamaURL") ?? "http://localhost:11434" }
         set { d.set(newValue, forKey: "ollamaURL") }
@@ -57,16 +66,17 @@ enum Prefs {
 }
 
 enum EngineKind: String, CaseIterable, Identifiable {
-    case auto, google, apple, googleCloud, deepl, ollama
+    case auto, google, local, apple, googleCloud, deepl, ollama
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .auto: "Automatic (Google, then on-device)"
+        case .auto: "Automatic (Google online, local model offline)"
         case .google: "Google Translate"
-        case .apple: "Apple on-device (offline)"
+        case .local: "Local model (private, offline)"
+        case .apple: "Apple Translation (offline)"
         case .googleCloud: "Google Cloud (your API key)"
         case .deepl: "DeepL (your API key)"
-        case .ollama: "Ollama (local model)"
+        case .ollama: "Ollama or another local server"
         }
     }
 }

@@ -41,7 +41,7 @@ enum Pipeline {
     /// batch lands, so most of the screen is painted before the slowest reply arrives.
     static func blocks(for items: [TextItem], in snap: Snapshot, to target: Language,
                        progress: (@MainActor ([Block]) -> Void)? = nil) async throws -> [Block] {
-        let todo = items.filter { $0.hasLetters && !Detect.isAlready($0.text, in: target) }
+        let todo = items.filter { $0.hasLetters && !$0.isLiteral && !Detect.isAlready($0.text, in: target) }
         guard !todo.isEmpty else { return [] }
         let t0 = Date()
         // Top of the screen first, so the first batch to land is what the eye reads first.

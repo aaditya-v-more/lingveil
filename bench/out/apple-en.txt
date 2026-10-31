@@ -1,0 +1,32 @@
+設定
+New chat
+Enter the message
+What time is tomorrow's meeting?
+I sent a photo.
+Good morning. Would you like to meet at a cafe near the station this afternoon? I have something I want to talk about regarding a new project.
+Download has completed.
+Is it okay to delete this account? This operation cannot be reversed.
+Turn on notifications
+There are unsaved changes.
+Save changes
+Delete account
+Privacy and security
+Automatic backup
+Your messages are protected with end-to-end encryption. No one outside this chat can read them.
+Did you forget your password?
+Log in with Google
+5 minutes ago
+Download
+Settings
+Search contacts
+Your payment has been successfully processed, and the order will be shipped within three business days.
+Network connection failed. Please check your network settings and try again.
+Read
+Search
+Add friend
+Would you like to change your password?
+Would you like to have dinner together tonight?
+Settings
+Cancel
+Your session has expired. Please log in again.
+File could not be saved

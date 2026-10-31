@@ -3,7 +3,7 @@ import Carbon.HIToolbox
 
 @MainActor
 enum SettingsWindow {
-    enum Tab: String { case general, shortcuts, engines, permissions }
+    enum Tab: String { case general, shortcuts, models, engines, permissions }
     private static var window: NSWindow?
     private static let model = SettingsModel()
 
@@ -11,7 +11,7 @@ enum SettingsWindow {
         model.tab = tab
         model.refresh()
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 440),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
             w.title = "Lingveil"
             w.isReleasedWhenClosed = false
@@ -39,6 +39,8 @@ final class SettingsModel: ObservableObject {
     @Published var ollamaModel = Prefs.ollamaModel { didSet { Prefs.ollamaModel = ollamaModel } }
     @Published var login = Permissions.launchAtLogin { didSet { if login != Permissions.launchAtLogin { Permissions.launchAtLogin = login } } }
     @Published var offlineSource = "ja"
+    @Published var localModel = Prefs.localModel { didSet { Prefs.localModel = localModel } }
+    @Published var appleFast = Prefs.appleFast { didSet { Prefs.appleFast = appleFast } }
     @Published var screenOK = Capture.hasPermission
     @Published var axOK = AXText.trusted
     @Published var recording: Action?
@@ -59,11 +61,12 @@ struct SettingsView: View {
         TabView(selection: $m.tab) {
             general.tabItem { Label("General", systemImage: "gearshape") }.tag(SettingsWindow.Tab.general)
             shortcuts.tabItem { Label("Shortcuts", systemImage: "command") }.tag(SettingsWindow.Tab.shortcuts)
-            engines.tabItem { Label("Engines", systemImage: "globe") }.tag(SettingsWindow.Tab.engines)
+            ModelsView(m: m).tabItem { Label("Models", systemImage: "cpu") }.tag(SettingsWindow.Tab.models)
+            engines.tabItem { Label("Online", systemImage: "globe") }.tag(SettingsWindow.Tab.engines)
             permissions.tabItem { Label("Permissions", systemImage: "lock.shield") }.tag(SettingsWindow.Tab.permissions)
         }
         .padding(16)
-        .frame(width: 560, height: 440)
+        .frame(width: 640, height: 600)
         .onReceive(poll) { _ in if m.tab == .permissions { m.refresh() } }
     }
 
@@ -101,12 +104,6 @@ struct SettingsView: View {
         Form {
             Picker("Engine", selection: $m.engine) {
                 ForEach(EngineKind.allCases) { Text($0.title).tag($0) }
-            }
-            Section("On-device (offline)") {
-                Picker("Download pair from", selection: $m.offlineSource) {
-                    ForEach(Language.all.filter { $0.code != m.target }) { Text($0.name).tag($0.appleID) }
-                }
-                LanguageDownloadButton(source: m.offlineSource, target: Language.named(m.target).appleID)
             }
             Section("Your own keys (optional)") {
                 SecureField("Google Cloud API key", text: $m.cloudKey)
