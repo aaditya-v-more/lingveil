@@ -23,7 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func registerShortcuts() {
         registered.forEach { HotKeys.shared.unregister($0) }
         registered = Action.allCases.compactMap { a in
-            Prefs.shortcut(a).flatMap { HotKeys.shared.register($0) { [weak self] in self?.perform(a) } }
+            guard let s = Prefs.shortcut(a) else { return nil }
+            let id = HotKeys.shared.register(s) { [weak self] in self?.perform(a) }
+            Debug.log("shortcut \(a.rawValue) \(s.display) \(id == nil ? "FAILED" : "registered")")
+            return id
         }
     }
 
@@ -33,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func perform(_ a: Action) {
+        Debug.log("action \(a.rawValue)")
         switch a {
         case .screen: OneShot.shared.toggleScreen()
         case .area: OneShot.shared.area()

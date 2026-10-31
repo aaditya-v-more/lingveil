@@ -371,6 +371,7 @@ final class Bubble {
     func show(_ translation: String, _ original: String?, near p: CGPoint) {
         close()
         debugText = (original.map { $0 + " => " } ?? "") + translation
+        Debug.log("card \(debugText ?? "")")
         let tf = NSTextField(wrappingLabelWithString: translation)
         tf.font = .systemFont(ofSize: 14)
         tf.isSelectable = true
