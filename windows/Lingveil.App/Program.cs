@@ -27,6 +27,27 @@ public static class Program
             System.Console.WriteLine("installed " + ModelStore.PathOf(m));
             return 0;
         }
+        // The narration helper: stdin/stdout are pipes to the app (see TtsHost).
+        if (args.Length >= 5 && args[0] == "--tts") return TtsHost.Run(args[1], args[2], args[3], int.Parse(args[4]));
+        if (args.Length >= 2 && args[0] == "--say")
+        {
+            // Test: speak a line with a downloaded model into a WAV file: --say <model id> <out.wav> <text>
+            Console();
+            var m = VoiceCatalog.Models.First(v => v.Id == args[1]);
+            var wav = TtsHelper.For(m).Wav(string.Join(" ", args[3..]), m.Speaker("en"), 1, "en", CancellationToken.None).GetAwaiter().GetResult();
+            File.WriteAllBytes(args[2], wav);
+            TtsHelper.StopAll();
+            System.Console.WriteLine($"wrote {wav.Length} bytes");
+            return 0;
+        }
+        if (args.Length >= 2 && args[0] == "--voice-download")
+        {
+            Console();
+            var m = VoiceCatalog.Models.First(v => v.Id == args[1]);
+            VoiceStore.Download(m, new Progress<double>(p => System.Console.WriteLine($"{p:P0}")), CancellationToken.None).GetAwaiter().GetResult();
+            System.Console.WriteLine("installed " + VoiceStore.PathOf(m));
+            return 0;
+        }
         if (args.Length >= 1 && args[0] == "--ocr-languages")
         {
             Console();

@@ -11,6 +11,16 @@
         "lib/libonnxruntime.dylib"
       ]
     },
+    "win-x64": {
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-win-x64-shared-MT-Release.tar.bz2",
+      "sha256": "6dffdc715a4465b989446a6105265d2cb345e7101591a17d35534b6758f6e8df",
+      "bytes": 24805859,
+      "keep": [
+        "lib/sherpa-onnx-c-api.dll",
+        "lib/onnxruntime.dll",
+        "lib/onnxruntime_providers_shared.dll"
+      ]
+    },
     "why": "1.13.x still includes its own pronunciation engine (espeak-ng), which Piper, Kitten and Kokoro need; 2.x removed it."
   },
   "apple": {

@@ -54,7 +54,9 @@ public static class Debug
             Bubble.DebugPoint = new Native.POINT { X = v[0], Y = v[1] };
         }
         Log("cmd " + cmd);
-        if (name == "stop") { Live.Shared.Stop(); OneShot.Shared.Dismiss(); Bubble.Shared.Close(); return; }
+        if (name == "stop") { Narrator.Shared.Stop(); Live.Shared.Stop(); OneShot.Shared.Dismiss(); Bubble.Shared.Close(); return; }
+        if (name == "support") { Hud.DebugSupportCard(); return; }
+        if (name == "tutorial") { Tutorial.Show(); return; }
         if (name == "memory")
         {
             var p = Process.GetCurrentProcess();
@@ -63,12 +65,15 @@ public static class Debug
         }
         var sw = Stopwatch.StartNew();
         OneShot.Shared.DebugTimings = "";
+        var toastBefore = Hud.LastToast;
         Tray.Perform(name);
         bool Done() => name switch
         {
             "screen" or "area" => OneShot.Shared.DebugTimings.Length > 0 || OneShot.Shared.DebugView?.Status?.StartsWith("Nothing") == true,
             "live" => Live.Shared.DebugView?.Blocks.Count > 0,
             "cursor" or "selection" => Bubble.Shared.DebugText != null,
+            "copy" => Hud.LastToast != toastBefore,
+            "read" or "translateRead" => Narrator.Shared.DebugSaid.Count > 0 || Hud.LastToast != toastBefore,
             _ => true,
         };
         for (int i = 0; i < 600 && !Done(); i++) await Task.Delay(50);
@@ -77,8 +82,18 @@ public static class Debug
         foreach (var b in view?.Blocks ?? [])
             log += $"{(b.Item.FromUia ? "UIA" : "OCR")} {(int)b.Item.Rect.X},{(int)b.Item.Rect.Y} {Cut(b.Item.Text)} -> {Cut(b.Translation)}\n";
         if (Bubble.Shared.DebugText is { } bt) log += "bubble: " + bt + "\n";
+        if (name == "copy") log += "toast: " + Hud.LastToast + "\nclipboard:\n" + CopyText.Last + "\n";
+        if (name is "read" or "translateRead")
+        {
+            await Task.Delay(1500);
+            lock (Narrator.Shared.DebugSaid) foreach (var said in Narrator.Shared.DebugSaid) log += "said " + said + "\n";
+            if (Hud.LastToast != toastBefore) log += "toast: " + Hud.LastToast + "\n";
+        }
         await Task.Delay(300);
         // Save the monitor with our overlay in it: lift the capture exclusion for one frame.
+        // (Following stops looking meanwhile, or it would see its own overlay and hide it.)
+        Follower.Paused = true;
+        await Task.Delay(40);
         var overlays = Application.Current.Windows.Cast<Window>().Select(w => new System.Windows.Interop.WindowInteropHelper(w).Handle).ToList();
         foreach (var o in overlays) Native.SetWindowDisplayAffinity(o, Native.WDA_NONE);
         await Task.Delay(100);
@@ -87,6 +102,8 @@ public static class Debug
         using (var snap = new Snapshot(px, mon.Scale))
             Headless.Write(snap, [], Path.Combine(Dir!, name + ".png"));
         foreach (var o in overlays) Native.ExcludeFromCapture(o);
+        await Task.Delay(100);
+        Follower.Paused = false;
         File.WriteAllText(Path.Combine(Dir!, name + ".txt"), log);
     }
 

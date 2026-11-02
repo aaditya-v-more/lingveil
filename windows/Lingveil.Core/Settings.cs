@@ -24,6 +24,25 @@ public sealed class Settings
     /// Languages the user reads on screen; their OCR packs are the ones that matter.
     public List<string> ReadLanguages { get; set; } = [];
     public bool WebParagraphs { get; set; } = true;
+    /// Translate Screen follows the front window while it scrolls and is used (SPEC §2.12b).
+    public bool FollowScroll { get; set; } = true;
+
+    /// Read aloud: "system", a plugin's name from engines.json, or "model:<id>".
+    public string VoiceEngine { get; set; } = "system";
+    public double SpeechSpeed { get; set; } = 1.0;
+    /// Chosen voice per language ("hi") or per plugin and language ("Google|hi").
+    public Dictionary<string, string> VoiceIds { get; set; } = [];
+
+    public bool TutorialShown { get; set; }
+    public List<string> TipsShown { get; set; } = [];
+
+    // Ko-fi reminder bookkeeping (SPEC §2.16).
+    public int Uses { get; set; }
+    public int UseDays { get; set; }
+    public long LastUseDay { get; set; }
+    public DateTime? FirstUse { get; set; }
+    public DateTime? SupportQuietUntil { get; set; }
+    public string? LastVersion { get; set; }
 
     public static string Folder { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lingveil");
     static string FilePath => Path.Combine(Folder, "settings.json");

@@ -14,7 +14,7 @@ public static class RegionPicker
     /// Set by the debug listener so area and live modes can run without a person dragging.
     public static Int32Rect? DebugRect;
 
-    public static Task<(Native.Monitor, Int32Rect)?> Pick()
+    public static Task<(Native.Monitor, Int32Rect)?> Pick(string hintText = "Drag over the text to translate · Esc to cancel")
     {
         var mon = Native.UnderCursor;
         if (DebugRect is { } d) { DebugRect = null; return Task.FromResult<(Native.Monitor, Int32Rect)?>((Native.MonitorAt(new Native.POINT { X = d.X, Y = d.Y }), d)); }
@@ -23,7 +23,7 @@ public static class RegionPicker
         var box = new Rectangle { Stroke = Brushes.White, StrokeThickness = 1, Fill = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)), Visibility = Visibility.Collapsed };
         var hint = new TextBlock
         {
-            Text = "Drag over the text to translate · Esc to cancel", Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeights.SemiBold,
+            Text = hintText, Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeights.SemiBold,
         };
         canvas.Children.Add(box);
         canvas.Children.Add(hint);

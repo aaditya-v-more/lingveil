@@ -55,14 +55,25 @@ public sealed class OverlayWindow : Window
     }
 }
 
+/// Each block is its own layer (a DrawingVisual), painted once; following the app's
+/// scrolling only moves layers (shared/SPEC.md §2.12b). A re-read keeps the layer of a block
+/// with the same translation at the same spot, so nothing flickers; new blocks fade in over
+/// 0.12 s and blocks whose text left fade out. Border, outline, tooltip and status are drawn
+/// on a top layer.
 public sealed class OverlayView : FrameworkElement
 {
     List<Block> blocks = [];
     List<Painter.Laid> laid = [];
+    List<DrawingVisual?> layers = [];
+    readonly VisualCollection children;
+    readonly DrawingVisual top = new();
+    double[] shifts = [];
+    HashSet<int> hidden = [];
     string? status;
-    int? hovered;
+    int? hovered, highlight;
     bool showOriginal;
     readonly DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
+    readonly Dictionary<DrawingVisual, (double from, double to, DateTime start, bool remove)> fades = [];
 
     public bool Interactive { get; init; }
     public bool ShowBorder { get; set; }
@@ -70,44 +81,134 @@ public sealed class OverlayView : FrameworkElement
 
     public OverlayView()
     {
-        hoverTimer.Tick += (_, _) => { hoverTimer.Stop(); showOriginal = true; InvalidateVisual(); };
+        children = new VisualCollection(this) { top };
+        hoverTimer.Tick += (_, _) => { hoverTimer.Stop(); showOriginal = true; DrawTop(); };
+        SizeChanged += (_, _) => DrawTop();
     }
+
+    protected override int VisualChildrenCount => children.Count;
+    protected override Visual GetVisualChild(int index) => children[index];
 
     public IReadOnlyList<Block> Blocks
     {
         get => blocks;
-        set
-        {
-            blocks = [.. value];
-            double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-            laid = Painter.LayoutAll(blocks, new Rect(0, 0, ActualWidth, ActualHeight), ppd);
-            hovered = null; showOriginal = false;
-            InvalidateVisual();
-        }
+        set => Show(value, null, null);
     }
 
-    public string? Status { get => status; set { status = value; InvalidateVisual(); } }
+    /// Where each block is now relative to where it was read (points, down is positive).
+    public IReadOnlyList<double> Shifts => shifts;
+
+    /// Shows `value`, each moved by `shift` and those in `hide` hidden, keeping the layer of
+    /// any block that looks the same as one already showing.
+    public void Show(IReadOnlyList<Block> value, IReadOnlyList<double>? shift, ISet<int>? hide)
+    {
+        var old = new Dictionary<string, DrawingVisual>();
+        for (int i = 0; i < blocks.Count; i++) if (layers[i] is { } l) old.TryAdd(Key(blocks[i], laid[i], i < shifts.Length ? shifts[i] : 0), l);
+        blocks = [.. value];
+        double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        laid = Painter.LayoutAll(blocks, new Rect(0, 0, ActualWidth, ActualHeight), ppd);
+        shifts = Enumerable.Range(0, blocks.Count).Select(i => shift != null && i < shift.Count ? shift[i] : 0).ToArray();
+        hidden = hide != null ? [.. hide] : [];
+        var style = Settings.Current.Style;
+        var next = new List<DrawingVisual?>();
+        bool first = old.Count == 0;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            if (laid[i].Dropped) { next.Add(null); continue; }
+            if (old.Remove(Key(blocks[i], laid[i], shifts[i]), out var keep))
+            {
+                keep.Transform = new TranslateTransform(0, shifts[i]);
+                if (hidden.Contains(i)) keep.Opacity = 0; else if (keep.Opacity < 1 && !fades.ContainsKey(keep)) Fade(keep, 1);
+                next.Add(keep);
+                continue;
+            }
+            var v = new DrawingVisual { Transform = new TranslateTransform(0, shifts[i]) };
+            using (var dc = v.RenderOpen()) Painter.Draw(dc, blocks[i], laid[i], style);
+            children.Insert(children.Count - 1, v);
+            if (hidden.Contains(i)) v.Opacity = 0;
+            else if (!first) { v.Opacity = 0; Fade(v, 1); }
+            next.Add(v);
+        }
+        foreach (var gone in old.Values) Fade(gone, 0, remove: true);
+        layers = next;
+        hovered = null; showOriginal = false;
+        DrawTop();
+    }
+
+    /// Moves finished layers: no text is laid out or drawn again.
+    public void Move(IReadOnlyList<double> shift, ISet<int> hide)
+    {
+        for (int i = 0; i < layers.Count; i++)
+        {
+            if (layers[i] is not { } l) continue;
+            double s = i < shift.Count ? shift[i] : 0;
+            if (i < shifts.Length) shifts[i] = s;
+            ((TranslateTransform)l.Transform).Y = s;
+            bool was = hidden.Contains(i), now = hide.Contains(i);
+            if (was != now) Fade(l, now ? 0 : 1);
+        }
+        hidden = [.. hide];
+        if (highlight != null) DrawTop();
+    }
+
+    /// A block read aloud gets a 2 pt accent outline.
+    public int? Highlight { get => highlight; set { if (highlight != value) { highlight = value; DrawTop(); } } }
+
+    public string? Status { get => status; set { status = value; DrawTop(); } }
+
+    static string Key(Block b, Painter.Laid l, double shift) => $"{b.Translation}|{Math.Round(l.Box.X)}|{Math.Round(l.Box.Y + shift)}|{Math.Round(l.Box.Width)}";
+
+    void Fade(DrawingVisual v, double to, bool remove = false)
+    {
+        if (fades.Count == 0) CompositionTarget.Rendering += Animate;
+        fades[v] = (v.Opacity, to, DateTime.UtcNow, remove);
+    }
+
+    void Animate(object? sender, EventArgs e)
+    {
+        foreach (var (v, f) in fades.ToList())
+        {
+            double t = Math.Min(1, (DateTime.UtcNow - f.start).TotalMilliseconds / 120);
+            v.Opacity = f.from + (f.to - f.from) * t;
+            if (t < 1) continue;
+            fades.Remove(v);
+            if (f.remove) children.Remove(v);
+        }
+        if (fades.Count == 0) CompositionTarget.Rendering -= Animate;
+    }
+
+    Rect BoxOf(int i) { var r = laid[i].Box; r.Offset(0, i < shifts.Length ? shifts[i] : 0); return r; }
+
+    void DrawTop()
+    {
+        var all = new Rect(RenderSize);
+        double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        using var dc = top.RenderOpen();
+        if (ShowBorder)
+        {
+            var r = all; r.Inflate(-1, -1);
+            var a = SystemColors.HighlightColor;
+            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(180, a.R, a.G, a.B)), 2), r, 6, 6);
+        }
+        if (highlight is { } h && h < laid.Count && !laid[h].Dropped)
+        {
+            var r = BoxOf(h); r.Inflate(3, 2);
+            var a = SystemColors.HighlightColor;
+            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(230, a.R, a.G, a.B)), 2), r, 4, 4);
+        }
+        if (hovered is { } hv && showOriginal && hv < blocks.Count) Painter.DrawTooltip(dc, blocks[hv].Item.Text, BoxOf(hv), all, ppd);
+        if (status != null) Painter.DrawPill(dc, status, all, ppd);
+    }
 
     protected override void OnRender(DrawingContext dc)
     {
         // A nearly transparent fill so clicks anywhere on an interactive overlay reach it.
-        var all = new Rect(RenderSize);
-        dc.DrawRectangle(Interactive ? new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)) : Brushes.Transparent, null, all);
-        var style = Settings.Current.Style;
-        for (int i = 0; i < blocks.Count; i++) Painter.Draw(dc, blocks[i], laid[i], style);
-        if (ShowBorder)
-        {
-            var r = all; r.Inflate(-1, -1);
-            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(180, SystemColors.HighlightColor.R, SystemColors.HighlightColor.G, SystemColors.HighlightColor.B)), 2), r, 6, 6);
-        }
-        double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        if (hovered is { } h && showOriginal && h < blocks.Count) Painter.DrawTooltip(dc, blocks[h].Item.Text, laid[h].Box, all, ppd);
-        if (status != null) Painter.DrawPill(dc, status, all, ppd);
+        dc.DrawRectangle(Interactive ? new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)) : Brushes.Transparent, null, new Rect(RenderSize));
     }
 
     int? IndexAt(Point p)
     {
-        for (int i = 0; i < laid.Count; i++) if (!laid[i].Dropped && laid[i].Box.Contains(p)) return i;
+        for (int i = 0; i < laid.Count; i++) if (!laid[i].Dropped && !hidden.Contains(i) && BoxOf(i).Contains(p)) return i;
         return null;
     }
 
@@ -115,7 +216,7 @@ public sealed class OverlayView : FrameworkElement
     {
         var i = IndexAt(e.GetPosition(this));
         hoverTimer.Stop();
-        if (i != hovered) { showOriginal = false; hovered = i; InvalidateVisual(); }
+        if (i != hovered) { showOriginal = false; hovered = i; DrawTop(); }
         if (i != null) hoverTimer.Start();
     }
 
@@ -133,7 +234,8 @@ public sealed class OverlayView : FrameworkElement
             Add("Copy Original", () => Clipboard.SetText(b.Item.Text));
             m.Items.Add(new Separator());
         }
-        Add("Copy All Translations", () => Clipboard.SetText(string.Join("\n", blocks.OrderBy(b => b.Item.Rect.Top).Select(b => b.Translation))));
+        Add("Copy All Translations", () => Clipboard.SetText(string.Join("\n", ReadingOrder.Order(blocks.Select(b => b.Item.Rect).ToList()).Select(k => blocks[k].Translation))));
+        Add("Read Aloud", () => ReadAloud.ReadOverlay(this));
         Add("Close", () => OnDismiss?.Invoke());
         m.PlacementTarget = this;
         m.IsOpen = true;

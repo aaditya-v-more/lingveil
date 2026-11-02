@@ -22,11 +22,14 @@ public sealed class Bubble
     /// Set by the debug listener so pointer mode can run without moving the mouse.
     public static Native.POINT? DebugPoint;
 
-    public async void UnderPointer()
+    string lastText = "";
+
+    /// `quiet` (hover with Alt): no "No text" card, and the same text isn't shown twice.
+    public async void UnderPointer(bool quiet = false)
     {
-        Close();
         var p = DebugPoint ?? Native.Cursor;
         DebugPoint = null;
+        if (!quiet) Close();
         var found = await Task.Run(() => FromUia(p));
         if (found == null)
         {
@@ -44,26 +47,31 @@ public sealed class Bubble
                 return hit is { } h ? h.Text : null;
             });
         }
-        if (found == null) { Show("No text under the pointer", null, p); return; }
+        if (found == null) { if (!quiet) Show("No text under the pointer", null, p); return; }
+        if (quiet && found == lastText && card != null) return;
         await TranslateAndShow(found, p);
     }
 
-    public async void Selection()
+    /// `speak`: also read the translation aloud (Translate and Read Aloud with a selection).
+    public async void Selection(bool speak = false)
     {
         Close();
         var p = Native.Cursor;
         var text = await Task.Run(SelectedText);
         if (string.IsNullOrWhiteSpace(text)) { Show("Select some text first", null, p); return; }
-        await TranslateAndShow(text, p);
+        await TranslateAndShow(text, p, speak);
     }
 
-    async Task TranslateAndShow(string text, Native.POINT p)
+    async Task TranslateAndShow(string text, Native.POINT p, bool speak = false)
     {
+        lastText = text;
         var target = Settings.Current.TargetLanguage;
         try
         {
             var t = (await Task.Run(() => Translation.Translate([text], target)))[0];
             Show(t, text, p);
+            Hud.Used();
+            if (speak) Narrator.Shared.Read([new Segment(t, null, target.Code)], _ => { });
         }
         catch (Exception e) { Show(e.Message, null, p); }
     }
@@ -94,7 +102,7 @@ public sealed class Bubble
     }
 
     /// Selected text from the focused element's TextPattern.
-    static string? SelectedText()
+    public static string? SelectedText()
     {
         try
         {
@@ -139,9 +147,18 @@ public sealed class Bubble
                 Text = original, FontSize = 11, Foreground = secondary, TextWrapping = TextWrapping.Wrap, MaxHeight = 4 * 15,
                 TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 6, 0, 0),
             });
-            var copy = new Button { Content = "Copy", Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+            var copy = new Button { Content = "Copy", Padding = new Thickness(8, 1, 8, 1), HorizontalAlignment = HorizontalAlignment.Left };
             copy.Click += (_, _) => { Clipboard.SetText(translation); Close(); };
-            stack.Children.Add(copy);
+            var lang = Settings.Current.TargetLanguage.Code;
+            var speak = new Button { Content = "🔊", ToolTip = "Read aloud", Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(6, 0, 0, 0) };
+            speak.Click += (_, _) =>
+            {
+                if (Narrator.Shared.IsSpeaking) Narrator.Shared.Stop();
+                else Narrator.Shared.Read([new Segment(translation, null, lang)], _ => { });
+            };
+            row.Children.Add(copy); row.Children.Add(speak);
+            stack.Children.Add(row);
         }
         var border = new Border
         {
@@ -176,6 +193,7 @@ public sealed class Bubble
         Native.SetWindowPos(new WindowInteropHelper(w).Handle, new IntPtr(-1), x, y, 0, 0, 0x0001 | 0x0010 | 0x0040);
         card = w;
         escKey = HotKeys.Shared.Register(new Shortcut(0, Native.VK_ESCAPE), Close);
+        if (original != null && original != translation) Hud.Tip("card");
         // Closes on a click outside it or a scroll.
         bool wasDown = true;
         watch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
@@ -189,7 +207,7 @@ public sealed class Bubble
         w.MouseWheel += (_, _) => Close();
     }
 
-    static bool IsDark()
+    public static bool IsDark()
     {
         try
         {

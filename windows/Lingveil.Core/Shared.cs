@@ -10,7 +10,7 @@ public record Language(string Code, string Name, string AppleId, string ChineseN
 /// back to the repo's shared/ folder.
 public static class Shared
 {
-    static string Find(string file)
+    public static string Find(string file)
     {
         var next = Path.Combine(AppContext.BaseDirectory, "shared", file);
         if (File.Exists(next)) return next;

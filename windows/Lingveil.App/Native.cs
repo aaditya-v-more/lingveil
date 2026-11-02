@@ -76,6 +76,21 @@ public static class Native
         return DwmGetWindowAttribute(h, 9, out var r, Marshal.SizeOf<RECT>()) == 0 ? r.ToRect() : null;   // DWMWA_EXTENDED_FRAME_BOUNDS
     }
 
+    /// Visible frame of a window, or null once it is closed or minimized.
+    public static Int32Rect? FrameOf(IntPtr hwnd)
+    {
+        if (!IsWindow(hwnd) || IsIconic(hwnd)) return null;
+        return DwmGetWindowAttribute(hwnd, 9, out var r, Marshal.SizeOf<RECT>()) == 0 ? r.ToRect() : null;
+    }
+    [DllImport("user32")] static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32")] static extern bool IsIconic(IntPtr hwnd);
+
+    public static Int32Rect? Intersect(Int32Rect a, Int32Rect b)
+    {
+        int x0 = Math.Max(a.X, b.X), y0 = Math.Max(a.Y, b.Y), x1 = Math.Min(a.X + a.Width, b.X + b.Width), y1 = Math.Min(a.Y + a.Height, b.Y + b.Height);
+        return x1 - x0 >= 16 && y1 - y0 >= 16 ? new Int32Rect(x0, y0, x1 - x0, y1 - y0) : null;
+    }
+
     public static bool IsOurs(IntPtr hwnd)
     {
         GetWindowThreadProcessId(hwnd, out var pid);

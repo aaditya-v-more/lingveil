@@ -31,6 +31,7 @@
   <ItemGroup>
     <None Include="..\..\shared\models.json" Link="shared\models.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\shared\languages.json" Link="shared\languages.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\shared\voices.json" Link="shared\voices.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- llama.cpp server for local models, pinned in ..\llama.json and fetched once. -->

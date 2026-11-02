@@ -100,6 +100,28 @@ public static class Detect
         return share > 0.8;
     }
 
+    static readonly (string Code, HashSet<string> Words)[] LatinWords =
+    [
+        ("en", ["the", "and", "of", "to", "is", "in", "that", "it", "for", "you", "with", "this", "are", "on", "was"]),
+        ("es", ["el", "la", "de", "que", "y", "en", "los", "las", "es", "por", "una", "con", "para", "del", "se"]),
+        ("fr", ["le", "la", "les", "de", "et", "est", "des", "une", "un", "pour", "que", "dans", "pas", "du", "vous"]),
+        ("de", ["der", "die", "und", "das", "ist", "nicht", "ein", "eine", "zu", "mit", "den", "sie", "ich", "auf", "für"]),
+        ("it", ["il", "la", "di", "che", "e", "è", "per", "un", "una", "non", "con", "sono", "del", "gli", "le"]),
+        ("pt", ["o", "a", "de", "que", "e", "do", "da", "em", "um", "uma", "para", "com", "não", "os", "você"]),
+        ("nl", ["de", "het", "een", "en", "van", "is", "dat", "niet", "op", "te", "zijn", "voor", "met", "ik", "je"]),
+    ];
+
+    /// The language to read `text` aloud in: its script where that names a language, else
+    /// the Latin-script language whose common words it uses most (English when unsure).
+    public static string Language(string text)
+    {
+        var g = Guess(text);
+        if (g != "en") return g;
+        var words = text.ToLowerInvariant().Split([' ', '\n', '\t', ',', '.', '!', '?', ';', ':', '(', ')', '"'], StringSplitOptions.RemoveEmptyEntries);
+        var best = LatinWords.Select(l => (l.Code, Hits: words.Count(l.Words.Contains))).MaxBy(x => x.Hits);
+        return best.Hits >= 2 && best.Hits > LatinWords[0].Words.Count(words.Contains) ? best.Code : "en";
+    }
+
     /// Best guess at the source language code, for prompts that name it (TranslateGemma).
     public static string Guess(string text)
     {

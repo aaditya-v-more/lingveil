@@ -20,7 +20,18 @@ public static class Tray
         ("live", "Live Translate Area…", "Alt+Shift+L", () => Live.Shared.Toggle()),
         ("cursor", "Translate Under Pointer", "Alt+Shift+D", () => Bubble.Shared.UnderPointer()),
         ("selection", "Translate Selected Text", "Alt+Shift+S", () => Bubble.Shared.Selection()),
+        ("copy", "Copy Text from Area…", "Alt+Shift+C", () => CopyText.Area()),
+        ("read", "Read Aloud", "Alt+Shift+R", () => ReadAloud.Read()),
+        ("translateRead", "Translate and Read Aloud", "Alt+Shift+E", () => ReadAloud.TranslateAndRead()),
     ];
+
+    /// The shortcut for an action as shown to people, or null when it's turned off.
+    public static string? ShortcutText(string id)
+    {
+        var a = Actions.FirstOrDefault(x => x.Id == id);
+        var t = Settings.Current.Shortcuts.GetValueOrDefault(id, a.Default);
+        return string.IsNullOrWhiteSpace(t) ? null : t;
+    }
 
     public static int Run()
     {
@@ -36,7 +47,14 @@ public static class Tray
             icon.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) OneShot.Shared.ToggleScreen(); };
             BuildMenu(icon.ContextMenuStrip);
             RegisterShortcuts();
+            HoverWatcher.Shared.Update();
             Debug.Listen();
+            if (!Settings.Current.TutorialShown && Environment.GetEnvironmentVariable("LINGVEIL_DEBUG_DIR") == null)
+            {
+                Settings.Current.TutorialShown = true; Settings.Current.Save();
+                Tutorial.Show();
+            }
+            Hud.NoteUpdate();
             // Load the OCR engines once in the background so the first shortcut is quick.
             _ = Task.Run(async () =>
             {
@@ -44,7 +62,7 @@ public static class Tray
                 Memory.Relieve();
             });
         };
-        app.Exit += (_, _) => { LlamaServer.Shared.Stop(); if (icon != null) icon.Visible = false; };
+        app.Exit += (_, _) => { LlamaServer.Shared.Stop(); TtsHelper.StopAll(); if (icon != null) icon.Visible = false; };
         app.Run();
         return 0;
     }
@@ -73,9 +91,10 @@ public static class Tray
         m.Items.Clear();
         foreach (var a in Actions)
         {
-            var item = new Forms.ToolStripMenuItem(a.Title, null, (_, _) => a.Run())
+            if (a.Id == "copy" || a.Id == "read") m.Items.Add(new Forms.ToolStripSeparator());
+            var item = new Forms.ToolStripMenuItem(a.Id == "read" && Narrator.Shared.IsSpeaking ? "Stop Reading" : a.Title, null, (_, _) => a.Run())
             {
-                ShortcutKeyDisplayString = Settings.Current.Shortcuts.GetValueOrDefault(a.Id, a.Default),
+                ShortcutKeyDisplayString = ShortcutText(a.Id) ?? "",
                 Checked = a.Id == "live" && Live.Shared.IsRunning,
             };
             m.Items.Add(item);
@@ -106,9 +125,11 @@ public static class Tray
         m.Items.Add(new Forms.ToolStripSeparator());
         m.Items.Add(new Forms.ToolStripMenuItem("Settings…", null, (_, _) => SettingsWindow.Open()));
         m.Items.Add(new Forms.ToolStripMenuItem("Models…", null, (_, _) => SettingsWindow.Open("models")));
+        m.Items.Add(new Forms.ToolStripMenuItem("Voices…", null, (_, _) => SettingsWindow.Open("voices")));
+        m.Items.Add(new Forms.ToolStripMenuItem("Show Tutorial", null, (_, _) => Tutorial.Show()));
         m.Items.Add(new Forms.ToolStripMenuItem("Support Lingveil on Ko-fi…", null, (_, _) => SettingsWindow.OpenUrl(SettingsWindow.KoFi)));
         m.Items.Add(new Forms.ToolStripSeparator());
-        m.Items.Add(new Forms.ToolStripMenuItem("Quit Lingveil", null, (_, _) => { Live.Shared.Stop(); OneShot.Shared.Dismiss(); Application.Current.Shutdown(); }));
+        m.Items.Add(new Forms.ToolStripMenuItem("Quit Lingveil", null, (_, _) => { Narrator.Shared.Stop(); Live.Shared.Stop(); OneShot.Shared.Dismiss(); Application.Current.Shutdown(); }));
     }
 
     public static void Busy(bool on) { if (icon != null && !Live.Shared.IsRunning) icon.Icon = on ? busyIcon : idleIcon; }
