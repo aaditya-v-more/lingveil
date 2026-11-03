@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Lingveil.Core</RootNamespace>
+    <AssemblyName>Lingveil.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="7.3.0.3" />
+  </ItemGroup>
+
+  <!--
+    The pipeline is shared with the Windows app: these files are compiled from
+    windows/Lingveil.Core as they are. They were written against WPF's Rect/Point/Size/
+    FormattedText, which Shim/ re-implements on SkiaSharp so the fitting and painting
+    rules exist once. Files not listed here (Ocr.cs, Painter.Draw.cs, Local.Windows.cs,
+    Headless.Windows.cs) are the Windows halves; their Linux counterparts are *.Linux.cs.
+  -->
+  <ItemGroup>
+    <SharedSource Include="..\..\windows\Lingveil.Core\Colors.cs;..\..\windows\Lingveil.Core\Geometry.cs;..\..\windows\Lingveil.Core\Model.cs;..\..\windows\Lingveil.Core\Pipeline.cs;..\..\windows\Lingveil.Core\Settings.cs;..\..\windows\Lingveil.Core\Shared.cs;..\..\windows\Lingveil.Core\Text.cs;..\..\windows\Lingveil.Core\Translation.cs;..\..\windows\Lingveil.Core\Painter.cs;..\..\windows\Lingveil.Core\Ocr.Paragraphs.cs;..\..\windows\Lingveil.Core\Local.cs;..\..\windows\Lingveil.Core\Headless.cs" />
+    <Compile Include="@(SharedSource)" Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\shared\models.json" Link="shared\models.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\shared\languages.json" Link="shared\languages.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
